@@ -1,0 +1,61 @@
+body {
+    margin: 0;
+    font-family: 'Lato Light', sans-serif;
+    /* Will add import in index.html */
+    background-color: #f0f0e4;
+    /* Light retro background */
+    color: #333;
+    /* Dark text */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.landing-page {
+    text-align: center;
+    padding: 20px;
+    background-color: #fff;
+    /* White content area */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+.header h1 {
+    font-size: 2.5em;
+    color: #5a6a62;
+    /* Muted green */
+    margin-bottom: 20px;
+}
+
+.play-button {
+    padding: 10px 20px;
+    font-size: 1.2em;
+    background-color: #e94e77;
+    /* Retro pink */
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.play-button:hover {
+    background-color: #d43a63;
+    /* Darker pink on hover */
+}
+
+.main-content {
+    margin-top: 20px;
+}
+
+.track-info {
+    margin-top: 20px;
+    font-size: 1em;
+    color: #5a6a62;
+    /* Muted green */
+}
+
+.track-info p {
+    margin: 5px 0;
+}
