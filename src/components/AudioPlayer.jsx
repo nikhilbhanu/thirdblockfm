@@ -26,7 +26,7 @@ const AudioPlayer = () => {
   const fetchMetadata = async () => {
     try {
       // Use the proxy path configured in vite.config.js
-      const response = await fetch('https://honest-turkeys-boil.loca.lt/status-json.xsl');
+      const response = await fetch('https://roughly-proud-vervet.ngrok-free.app/status-json.xsl');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -53,7 +53,7 @@ const AudioPlayer = () => {
 
   useEffect(() => {
     fetchMetadata(); // Fetch metadata on component mount
-    const intervalId = setInterval(fetchMetadata, 15000); // Fetch metadata every 15 seconds
+    const intervalId = setInterval(fetchMetadata, 12000); // Fetch metadata every 15 seconds
     return () => clearInterval(intervalId); // Clear interval on component unmount
   }, []); // Empty dependency array ensures this runs once on mount and cleans up on unmount
 
@@ -81,7 +81,7 @@ const AudioPlayer = () => {
   return (
     <div className="audio-player-container">
       {/* Audio element - hidden but controlled */}
-      <audio ref={audioRef} src="https://honest-turkeys-boil.loca.lt/stream" preload="metadata" />
+      <audio ref={audioRef} src="https://roughly-proud-vervet.ngrok-free.app/stream" preload="metadata" />
 
       {/* Title Bar */}
       <div className="title-bar">
