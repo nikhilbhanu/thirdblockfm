@@ -26,7 +26,7 @@ const AudioPlayer = () => {
   const fetchMetadata = async () => {
     try {
       // Use the proxy path configured in vite.config.js
-      const response = await fetch('https://roughly-proud-vervet.ngrok-free.app/status-json.xsl');
+      const response = await fetch('https://3ff645f3216a4de6.ngrok.app/status-json.xsl');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -81,7 +81,7 @@ const AudioPlayer = () => {
   return (
     <div className="audio-player-container">
       {/* Audio element - hidden but controlled */}
-      <audio ref={audioRef} src="https://roughly-proud-vervet.ngrok-free.app/stream" preload="metadata" />
+      <audio ref={audioRef} src="https://3ff645f3216a4de6.ngrok.app/dreamy" preload="metadata" />
 
       {/* Title Bar */}
       <div className="title-bar">
