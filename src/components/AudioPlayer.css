@@ -16,10 +16,10 @@
 }
 
 .audio-player-container {
-    background-color: #F5F1E8;
-    /* Off-white/beige background */
-    border: 1px solid #000000;
-    /* Thin black border */
+    background-color: #E8E3D6;
+    /* 70s Mac beige background */
+    border: 2px solid #000000;
+    /* Thicker black border */
     color: #000000;
     display: flex;
     flex-direction: column;
@@ -32,17 +32,29 @@
     /* Or absolute, depending on context */
     top: 20px;
     left: 20px;
-    /* Remove default box-shadow and outset border */
-    box-shadow: none;
+    /* 70s Mac style inner shadow */
+    box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #ccc;
     border-radius: 3px;
     /* Subtle rounded corners */
+    max-width: 100vw;
+    box-sizing: border-box;
 }
 
-/* Remove mobile full-screen styles for now */
-/* @media (max-width: 600px) { ... } */
+/* Responsive adjustments for smaller screens */
+@media (max-width: 400px) {
+    .audio-player-container {
+        width: 100%;
+        left: 0;
+        right: 0;
+        top: 0;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+}
 
 /* Title Bar Area (Simulated) */
-.title-bar-area {
+.title-bar {
     /* Assuming a div wraps the top elements */
     display: flex;
     justify-content: space-between;
@@ -51,6 +63,12 @@
     padding-bottom: 5px;
     border-bottom: 1px solid #000000;
     /* Separator line */
+    /* 70s Mac style stripes */
+    background: repeating-linear-gradient(45deg,
+            #E8E3D6,
+            #E8E3D6 2px,
+            #D6D1C4 2px,
+            #D6D1C4 4px);
 }
 
 .title-text {
@@ -110,10 +128,10 @@
 
 /* Info Area (Time, Track) */
 .info-area {
-    /* background-color: transparent; */
-    /* Inherit from container */
-    padding: 5px 0;
-    /* Vertical padding */
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
     text-align: left;
 }
 
@@ -147,12 +165,16 @@
     justify-content: flex-start;
     /* Align buttons to the left */
     align-items: center;
-    padding-top: 8px;
-    /* Space above buttons */
+    padding: 12px 12px 12px 8px;
+    /* Adjust padding for left alignment */
     /* background-color: transparent; */
     /* Inherit from container */
     border-top: none;
     /* Remove previous top border */
+    flex-wrap: wrap;
+    /* Allow controls to wrap on smaller screens */
+    gap: 16px;
+    /* Add gap between controls */
 }
 
 .playback-controls {
@@ -167,8 +189,8 @@
     background-color: #F5F1E8;
     /* Match container background */
     border: 1px solid #000000;
-    box-shadow: none;
-    /* Remove default shadow */
+    /* Add classic 70s Mac inset/outset effect */
+    box-shadow: 1px 1px 0 #000, -1px -1px 0 #fff;
     margin: 0 2px;
     /* Adjust spacing */
     padding: 6px 8px;
@@ -193,8 +215,10 @@
     /* Slightly darker on press */
     border-style: solid;
     /* Keep border solid */
-    transform: none;
-    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.2);
+    /* More pronounced pressed effect */
+    box-shadow: inset 1px 1px 1px #000;
+    /* Subtle "pressed down" movement */
+    transform: translate(1px, 1px);
 }
 
 /* We should remove or comment out the old .station-button styles */
@@ -226,61 +250,61 @@
     border: 1px solid transparent;
     /* For focus outline */
     border-radius: 3px;
-}
 
-.station-switch:focus {
-    outline: none;
-    border: 1px dashed #000000;
-    /* Simple focus indicator */
+    /* Remove focus outline */
+    &:focus {
+        outline: none;
+        /* Subtle focus indicator */
+    }
 }
 
 .switch-track {
     width: 18px;
-    /* Width of the switch track */
     height: 40px;
-    /* Height of the switch track */
-    background-color: #d3d3d3;
-    /* Light grey track */
-    border: 1px solid #000000;
+    border: 1px solid #6E4A2B;
     border-radius: 8px;
-    /* Rounded ends for the track */
     position: relative;
     padding: 2px;
-    /* Inner padding for handle movement */
-    box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.4);
-    /* Inner shadow for depth */
+    box-shadow: inset 2px 2px 3px rgba(0, 0, 0, 0.3),
+        inset -2px -2px 3px rgba(255, 255, 255, 0.2);
+    background-image:
+        linear-gradient(to bottom, #D8C7A5, #B89B72),
+        repeating-linear-gradient(45deg,
+            rgba(0, 0, 0, 0.05) 0px,
+            rgba(0, 0, 0, 0.05) 1px,
+            transparent 1px,
+            transparent 4px);
+    background-blend-mode: overlay;
 }
 
 .switch-handle {
     width: 12px;
-    /* Handle width */
     height: 16px;
-    /* Handle height */
-    background-color: #F5F1E8;
-    /* Match player background, or a distinct color like a classic switch */
-    border: 1px solid #000000;
+    border: 1px solid #6E4A2B;
     border-radius: 5px;
-    /* Rounded handle */
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    transition: top 0.15s ease-in-out;
-    box-shadow: 0px 1px 1px rgba(0, 0, 0, 0.3);
-    /* Slight outer shadow for the handle */
+    transition: top 0.2s cubic-bezier(0.68, -0.55, 0.27, 1.55),
+        background-color 0.2s ease,
+        box-shadow 0.2s ease;
 }
 
 /* 'Off' state (handle at the bottom) */
 .station-switch .switch-handle {
     top: calc(100% - 16px - 3px);
-    /* Track height - handle height - bottom padding */
+    background: #F0E5D8;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.2),
+        -1px -1px 2px rgba(255, 255, 255, 0.8);
 }
 
 /* 'On' state (active) - handle at the top */
 .station-switch.active .switch-handle {
     top: 3px;
-    /* Top padding */
-    background-color: #bababa;
-    /* Slightly darker or different color when on */
+    background: #D97C29;
+    /* Burnt orange */
+    box-shadow: inset 2px 2px 3px rgba(0, 0, 0, 0.4),
+        1px 1px 2px rgba(255, 255, 255, 0.3);
 }
 
 .station-name-label {
@@ -291,6 +315,8 @@
     text-align: center;
     line-height: 1;
     /* Adjust for small font */
+    /* Add subtle depth to labels */
+    text-shadow: 1px 1px 0 #fff;
     /* text-transform: uppercase; /* Already in JSX */
 }
 
