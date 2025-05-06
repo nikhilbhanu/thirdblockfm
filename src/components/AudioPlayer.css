@@ -149,8 +149,8 @@
 /* Controls Area */
 .controls-area {
     display: flex;
-    justify-content: space-between;
-    /* Space out button groups */
+    justify-content: flex-start;
+    /* Align buttons to the left */
     align-items: center;
     padding-top: 8px;
     /* Space above buttons */
@@ -194,6 +194,20 @@
 }
 
 .control-button:active {
+    background-color: #e0dccc;
+    /* Slightly darker on press */
+    border-style: solid;
+    /* Keep border solid */
+    transform: none;
+    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+.station-button {
+    margin-right: 5px;
+    /* Add space between buttons */
+}
+
+.station-button.active {
     background-color: #e0dccc;
     /* Slightly darker on press */
     border-style: solid;
