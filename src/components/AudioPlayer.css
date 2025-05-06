@@ -197,18 +197,101 @@
     box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.2);
 }
 
+/* We should remove or comment out the old .station-button styles */
+/*
 .station-button {
     margin-right: 5px;
-    /* Add space between buttons */
 }
 
 .station-button.active {
     background-color: #e0dccc;
-    /* Slightly darker on press */
     border-style: solid;
-    /* Keep border solid */
     transform: none;
     box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.2);
+}
+*/
+
+/* Vertical Electrical Switch Styles */
+.station-switch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    width: 30px;
+    /* Width of the switch assembly */
+    user-select: none;
+    /* Prevent text selection */
+    padding: 5px;
+    /* Add some padding around the switch for easier clicking */
+    border: 1px solid transparent;
+    /* For focus outline */
+    border-radius: 3px;
+}
+
+.station-switch:focus {
+    outline: none;
+    border: 1px dashed #000000;
+    /* Simple focus indicator */
+}
+
+.switch-track {
+    width: 18px;
+    /* Width of the switch track */
+    height: 40px;
+    /* Height of the switch track */
+    background-color: #d3d3d3;
+    /* Light grey track */
+    border: 1px solid #000000;
+    border-radius: 8px;
+    /* Rounded ends for the track */
+    position: relative;
+    padding: 2px;
+    /* Inner padding for handle movement */
+    box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.4);
+    /* Inner shadow for depth */
+}
+
+.switch-handle {
+    width: 12px;
+    /* Handle width */
+    height: 16px;
+    /* Handle height */
+    background-color: #F5F1E8;
+    /* Match player background, or a distinct color like a classic switch */
+    border: 1px solid #000000;
+    border-radius: 5px;
+    /* Rounded handle */
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: top 0.15s ease-in-out;
+    box-shadow: 0px 1px 1px rgba(0, 0, 0, 0.3);
+    /* Slight outer shadow for the handle */
+}
+
+/* 'Off' state (handle at the bottom) */
+.station-switch .switch-handle {
+    top: calc(100% - 16px - 3px);
+    /* Track height - handle height - bottom padding */
+}
+
+/* 'On' state (active) - handle at the top */
+.station-switch.active .switch-handle {
+    top: 3px;
+    /* Top padding */
+    background-color: #bababa;
+    /* Slightly darker or different color when on */
+}
+
+.station-name-label {
+    margin-top: 6px;
+    font-size: 8px;
+    /* Match existing font size */
+    color: #000000;
+    text-align: center;
+    line-height: 1;
+    /* Adjust for small font */
+    /* text-transform: uppercase; /* Already in JSX */
 }
 
 /* Hide the actual audio element */

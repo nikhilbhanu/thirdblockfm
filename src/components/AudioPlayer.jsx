@@ -28,7 +28,7 @@ const AudioPlayer = () => {
   const [currentStationId, setCurrentStationId] = useState(null); // State to track the selected station
 
   // Configurable crossfade parameters
-  const CROSSFADE_DURATION_MS = 2000; // 1 second
+  const CROSSFADE_DURATION_MS = 1000; // 1 second
   const VOLUME_STEPS = 50; // Number of steps for volume change
 
   const togglePlay = () => {
@@ -40,8 +40,25 @@ const AudioPlayer = () => {
     }
 
     if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false); // Explicitly set to false on pause
+      // If currently playing, fade out the current station
+      console.log('togglePlay: Currently playing, fading out station:', currentStationId);
+      setCurrentStationId(null); // Set currentStationId to null to turn off the switch immediately
+      const audio = stationAudioRefs.current[currentStationId];
+      if (audio) {
+        const fadeInterval = setInterval(() => {
+          if (audio.volume > 0) {
+            audio.volume = Math.max(0, audio.volume - (1 / VOLUME_STEPS));
+          } else {
+            clearInterval(fadeInterval);
+            audio.pause();
+            console.log('Fade out complete on togglePlay.');
+            setIsPlaying(false); // Set isPlaying to false when fade out finishes
+          }
+        }, CROSSFADE_DURATION_MS / VOLUME_STEPS);
+
+        // Cleanup interval on component unmount or another togglePlay call
+        // This might require storing the interval ID in a ref
+      }
     } else {
       // If currently paused, fade in the current station
       console.log('togglePlay: Currently paused, fading in station:', currentStationId);
@@ -324,13 +341,21 @@ const AudioPlayer = () => {
           {/* Controls Area - Now contains station buttons */}
           <div className="controls-area">
             {stations.map(station => (
-              <button
+              <div
                 key={station.id}
-                className={`station-button ${currentStationId === station.id ? 'active' : ''}`}
+                className={`station-switch ${currentStationId === station.id ? 'active' : ''}`}
                 onClick={() => handleStationSelect(station.id)}
+                role="switch"
+                aria-checked={currentStationId === station.id}
+                aria-label={station.name} // For accessibility
+                tabIndex={0} // Make it focusable
+                onKeyPress={(e) => { if (e.key === 'Enter' || e.key === ' ') handleStationSelect(station.id); }} // Keyboard interaction
               >
-                {station.name}
-              </button>
+                <div className="switch-track">
+                  <div className="switch-handle"></div>
+                </div>
+                <span className="station-name-label">{station.name.toUpperCase()}</span> {/* Display station name */}
+              </div>
             ))}
           </div>
         </>
