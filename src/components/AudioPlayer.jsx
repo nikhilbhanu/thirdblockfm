@@ -18,33 +18,54 @@ const stations = [
 ];
 
 const AudioPlayer = () => {
-  const audioRef = useRef(null);
+  // Use a ref to store audio elements for each station
+  const stationAudioRefs = useRef({});
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(false); // New state for buffering indication
+  const [isBuffering, setIsBuffering] = useState(false); // State for overall buffering indication
   const [artist, setArtist] = useState('unknown artist');
   const [trackName, setTrackName] = useState('unknown track');
   const [currentStationId, setCurrentStationId] = useState(null); // State to track the selected station
 
+  // Configurable crossfade parameters
+  const CROSSFADE_DURATION_MS = 2000; // 1 second
+  const VOLUME_STEPS = 50; // Number of steps for volume change
+
   const togglePlay = () => {
-    console.log('togglePlay called. Current isPlaying:', isPlaying);
-    const audio = audioRef.current;
-    if (!audio || !currentStationId) {
-      console.log('togglePlay: Audio ref or currentStationId is null. Aborting.');
-      return; // Guard against null ref or no station selected
+    console.log('togglePlay called. Current isPlaying:', isPlaying, 'currentStationId:', currentStationId);
+    const audio = currentStationId ? stationAudioRefs.current[currentStationId] : null;
+    if (!audio) {
+      console.log('togglePlay: No audio element found for currentStationId. Aborting.');
+      return; // Guard against no station selected or audio element not found
     }
 
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false); // Explicitly set to false on pause
     } else {
-      // Attempt to play, handling potential errors
-      audio.play().then(() => {
-        setIsPlaying(true); // Set to true only if play is successful
-      }).catch(error => {
-        console.error("Error attempting to play audio:", error);
-        // Optionally update state to reflect that playback failed
-        setIsPlaying(false);
-      });
+      // If currently paused, fade in the current station
+      console.log('togglePlay: Currently paused, fading in station:', currentStationId);
+      const audio = stationAudioRefs.current[currentStationId];
+      if (audio) {
+        // Ensure it's playing (it might have been paused when faded out)
+        audio.play().catch(error => {
+          console.error("Error attempting to play audio on togglePlay:", error);
+          // Handle potential autoplay policy issues
+        });
+
+        // Fade in volume
+        const fadeInterval = setInterval(() => {
+          if (audio.volume < 1) {
+            audio.volume = Math.min(1, audio.volume + (1 / VOLUME_STEPS));
+          } else {
+            clearInterval(fadeInterval);
+            console.log('Fade in complete on togglePlay.');
+            setIsPlaying(true); // Set isPlaying to true when fade in finishes
+          }
+        }, CROSSFADE_DURATION_MS / VOLUME_STEPS);
+
+        // Cleanup interval on component unmount or another togglePlay call
+        // This might require storing the interval ID in a ref
+      }
     }
   };
 
@@ -100,118 +121,178 @@ const AudioPlayer = () => {
       const selectedStation = stations.find(station => station.id === currentStationId);
 
       if (selectedStation) {
-        const audio = audioRef.current;
-        if (audio) {
-          console.log(`Loading audio for station: ${selectedStation.name}`);
-          setIsBuffering(true); // Set buffering to true when loading starts
+        // The old logic for single audioRef is removed.
+        // Metadata fetching is still relevant for the currently selected station.
 
-          // Remove any existing canplaythrough listener before adding a new one
-          const oldListener = audio.oncanplaythrough;
-          if (oldListener) {
-            audio.removeEventListener('canplaythrough', oldListener);
-          }
+        // Start fetching metadata for the selected station
+        fetchMetadata(); // Initial fetch
+        const intervalId = setInterval(fetchMetadata, 5000); // Fetch metadata every 5 seconds
 
-          audio.src = selectedStation.streamUrl;
-          audio.load();
-
-          // Add event listener to know when the audio is ready to play
-          const handleCanPlayThrough = () => {
-            console.log('Audio is ready to play (canplaythrough event)');
-            setIsBuffering(false); // Set buffering to false when ready
-            // Audio is ready, but we don't auto-play.
-            // Playback will be initiated by user interaction via togglePlay.
-          };
-
-          audio.addEventListener('canplaythrough', handleCanPlayThrough);
-
-          // Store the listener so we can remove it on cleanup
-          audio.oncanplaythrough = handleCanPlayThrough;
-
-          // Start fetching metadata for the selected station
-          fetchMetadata(); // Initial fetch
-          const intervalId = setInterval(fetchMetadata, 5000); // Fetch metadata every 5 seconds
-
-          // Cleanup function for this effect
-          return () => {
-            console.log(`Cleaning up effect for station: ${selectedStation.name}`);
-            clearInterval(intervalId);
-            // Remove the canplaythrough listener
-            if (audioRef.current && audioRef.current.oncanplaythrough) {
-              audioRef.current.removeEventListener('canplaythrough', audioRef.current.oncanplaythrough);
-              audioRef.current.oncanplaythrough = null; // Clear the stored listener
-            }
-          };
-        }
+        // Cleanup function for this effect
+        return () => {
+          console.log(`Cleaning up metadata effect for station: ${selectedStation.name}`);
+          clearInterval(intervalId);
+        };
       }
     } else {
-      console.log('currentStationId is null. Clearing state and pausing audio.');
-      // If no station is selected, clear metadata and stop any playback
+      console.log('currentStationId is null. Clearing state.');
+      // If no station is selected, clear metadata
       setArtist('unknown artist');
       setTrackName('unknown track');
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = ''; // Clear the audio source
-      }
-      setIsPlaying(false);
-      setIsBuffering(false); // Not buffering if no station is selected
     }
     // Cleanup function for the case where currentStationId becomes null
     return () => {
-      // Any cleanup needed when currentStationId goes from a value to null
-      console.log('Running cleanup for useEffect on currentStationId change.');
+      console.log('Running cleanup for metadata useEffect on currentStationId change.');
     };
   }, [currentStationId]); // Rerun this effect when currentStationId changes
 
-  // Effect to update isPlaying state if audio playback ends naturally or is paused externally
+
+  // Effect to handle crossfading when currentStationId changes
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    if (currentStationId) {
+      console.log('currentStationId changed, initiating crossfade to:', currentStationId);
+      const incomingAudio = stationAudioRefs.current[currentStationId];
 
-    const handlePlay = () => {
-      console.log('Audio play event fired.');
-      setIsPlaying(true);
-    };
-    const handlePause = () => {
-      console.log('Audio pause event fired.');
+      if (!incomingAudio) {
+        console.error('Incoming audio element not found for station:', currentStationId);
+        return;
+      }
+
+      // Ensure the incoming audio is ready before starting crossfade
+      // This might require tracking readiness state per station
+      // For now, we'll assume preload="auto" is sufficient and the stream is ready quickly.
+      // A more robust solution would wait for a 'canplaythrough' event here.
+
+      // Start playing the incoming audio immediately at volume 0
+      incomingAudio.play().catch(error => {
+        console.error("Error attempting to play incoming audio:", error);
+        // Handle potential autoplay policy issues here
+      });
+
+      const fadeInterval = setInterval(() => {
+        let allFaded = true;
+
+        // Fade out all other stations
+        stations.forEach(station => {
+          if (station.id !== currentStationId) {
+            const outgoingAudio = stationAudioRefs.current[station.id];
+            if (outgoingAudio && outgoingAudio.volume > 0) {
+              outgoingAudio.volume = Math.max(0, outgoingAudio.volume - (1 / VOLUME_STEPS));
+              allFaded = false;
+              if (outgoingAudio.volume === 0) {
+                outgoingAudio.pause();
+                console.log(`Paused outgoing station: ${station.name}`);
+              }
+            }
+          }
+        });
+
+        // Fade in the incoming station
+        if (incomingAudio.volume < 1) {
+          incomingAudio.volume = Math.min(1, incomingAudio.volume + (1 / VOLUME_STEPS));
+          allFaded = false;
+        }
+
+        if (allFaded) {
+          clearInterval(fadeInterval);
+          console.log('Crossfade complete.');
+          setIsPlaying(true); // Set isPlaying to true when crossfade finishes
+        }
+      }, CROSSFADE_DURATION_MS / VOLUME_STEPS);
+
+      // Cleanup function to clear interval if station changes before fade completes
+      return () => {
+        console.log('Cleaning up crossfade effect.');
+        clearInterval(fadeInterval);
+      };
+
+    } else {
+      // If currentStationId becomes null, pause all audio
+      console.log('currentStationId is null, pausing all audio.');
+      stations.forEach(station => {
+        const audio = stationAudioRefs.current[station.id];
+        if (audio) {
+          audio.pause();
+          audio.volume = 0; // Reset volume
+        }
+      });
       setIsPlaying(false);
-    };
-    const handleEnded = () => {
-      console.log('Audio ended event fired.');
-      setIsPlaying(false); // Set to false when track ends
-    };
+    }
+  }, [currentStationId, stations, VOLUME_STEPS, CROSSFADE_DURATION_MS]); // Rerun when currentStationId or config changes
 
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
-    audio.addEventListener('ended', handleEnded);
+  // Effect to handle pre-buffering and setting up audio elements on mount
+  useEffect(() => {
+    console.log('Setting up audio elements and pre-buffering on mount.');
+    const stationReadiness = {}; // Use a local object to track readiness
 
-    // Cleanup listeners
+    stations.forEach(station => {
+      const audio = stationAudioRefs.current[station.id];
+      if (audio) {
+        // Audio element is already created in JSX with src and preload="auto"
+        // Add canplaythrough listener to track when each station is ready
+        const handleCanPlayThrough = () => {
+          console.log(`Station ${station.name} is ready to play.`);
+          stationReadiness[station.id] = true;
+          // If this is the currently selected station, update isBuffering state
+          if (currentStationId === station.id) {
+            setIsBuffering(false);
+          }
+        };
+        audio.addEventListener('canplaythrough', handleCanPlayThrough);
+
+        // Set initial volume to 0
+        audio.volume = 0;
+
+        // Initial check for buffering state if a station is already selected on mount
+        if (currentStationId === station.id && !stationReadiness[station.id]) {
+          setIsBuffering(true);
+        }
+
+
+        // Clean up listener on unmount
+        // Store listeners to remove them correctly
+        audio._canplaythroughListener = handleCanPlayThrough;
+      }
+    });
+
+    // Cleanup function for this effect
     return () => {
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handlePause);
-      audio.removeEventListener('ended', handleEnded);
+      console.log('Cleaning up pre-buffering effect.');
+      stations.forEach(station => {
+        const audio = stationAudioRefs.current[station.id];
+        if (audio && audio._canplaythroughListener) {
+          audio.removeEventListener('canplaythrough', audio._canplaythroughListener);
+          delete audio._canplaythroughListener; // Clean up the stored listener
+        }
+      });
     };
-  }, []); // Run once on mount
+  }, []); // Run only once on mount
 
   // Function to handle station selection
   const handleStationSelect = (stationId) => {
+    console.log('handleStationSelect called for station:', stationId);
     if (currentStationId === stationId) {
       // If the same station is clicked, toggle play/pause
       togglePlay();
     } else {
-      // If a different station is clicked, pause current playback,
-      // set the new station, and the useEffect will handle loading.
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      setIsPlaying(false);
-      setCurrentStationId(stationId);
+      // If a different station is clicked, initiate crossfade
+      setCurrentStationId(stationId); // Set the target station
+      // Crossfade logic will be handled in a separate effect or function
     }
   };
 
   return (
     <div className="audio-player-container">
-      {/* Audio element - hidden but controlled */}
-      <audio ref={audioRef} preload="metadata" /> {/* src will be set by useEffect */}
+      {/* Audio elements - hidden but controlled */}
+      {stations.map(station => (
+        <audio
+          key={station.id}
+          ref={el => stationAudioRefs.current[station.id] = el}
+          src={station.streamUrl}
+          preload="auto" // Preload audio on page load
+          volume={0} // Start with volume 0
+        />
+      ))}
 
       {/* Title Bar */}
       <div className="title-bar">
