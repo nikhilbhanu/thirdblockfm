@@ -5,13 +5,13 @@ import './AudioPlayer.css';
 const stations = [
   {
     id: 'dreamy',
-    name: 'dy',
+    name: 't',
     streamUrl: 'https://3ff645f3216a4de6.ngrok.app/dreamy',
     mountPoint: 'dreamy'
   },
   {
     id: 'boogie',
-    name: 'bb',
+    name: 'b',
     streamUrl: 'https://3ff645f3216a4de6.ngrok.app/boogie',
     mountPoint: 'boogie'
   }
@@ -20,6 +20,7 @@ const stations = [
 const AudioPlayer = () => {
   // Use a ref to store audio elements for each station
   const stationAudioRefs = useRef({});
+  const [isLoading, setIsLoading] = useState(true); // State for initial loading
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false); // State for overall buffering indication
   const [artist, setArtist] = useState('unknown artist');
@@ -224,6 +225,7 @@ const AudioPlayer = () => {
   useEffect(() => {
     console.log('Setting up audio elements and pre-buffering on mount.');
     const stationReadiness = {}; // Use a local object to track readiness
+    let stationsReadyCount = 0;
 
     stations.forEach(station => {
       const audio = stationAudioRefs.current[station.id];
@@ -232,7 +234,14 @@ const AudioPlayer = () => {
         // Add canplaythrough listener to track when each station is ready
         const handleCanPlayThrough = () => {
           console.log(`Station ${station.name} is ready to play.`);
-          stationReadiness[station.id] = true;
+          if (!stationReadiness[station.id]) { // Prevent double counting if event fires multiple times
+            stationReadiness[station.id] = true;
+            stationsReadyCount++;
+            if (stationsReadyCount === stations.length) {
+              console.log('All stations are ready.');
+              setIsLoading(false); // All stations are ready, hide loading
+            }
+          }
           // If this is the currently selected station, update isBuffering state
           if (currentStationId === station.id) {
             setIsBuffering(false);
@@ -300,30 +309,32 @@ const AudioPlayer = () => {
         {/* Add window control icons (minimize, maximize, close) if desired */}
       </div>
 
-      {/* Info Area */}
-      <div className="info-area">
-        <p>Artist: {artist}</p>
-        <p>Track: {trackName}</p>
-      </div>
+      {isLoading ? (
+        <div className="loading-message">
+          Loading<span className="loading-dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+      ) : (
+        <>
+          {/* Info Area */}
+          <div className="info-area">
+            <p>artist: {artist}</p>
+            <p>track: {trackName}</p>
+          </div>
 
-      {/* Controls Area - Now contains station buttons */}
-      <div className="controls-area">
-        {stations.map(station => (
-          <button
-            key={station.id}
-            className={`station-button ${currentStationId === station.id ? 'active' : ''}`}
-            onClick={() => handleStationSelect(station.id)}
-          >
-            {currentStationId === station.id
-              ? isBuffering
-                ? `${station.name} (loading...)`
-                : isPlaying
-                  ? `${station.name} (Playing)`
-                  : `${station.name} (Paused)`
-              : station.name}
-          </button>
-        ))}
-      </div>
+          {/* Controls Area - Now contains station buttons */}
+          <div className="controls-area">
+            {stations.map(station => (
+              <button
+                key={station.id}
+                className={`station-button ${currentStationId === station.id ? 'active' : ''}`}
+                onClick={() => handleStationSelect(station.id)}
+              >
+                {station.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };

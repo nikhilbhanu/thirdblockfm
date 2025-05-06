@@ -53,11 +53,6 @@
     /* Separator line */
 }
 
-.window-controls {
-    /* For close button etc. */
-    /* Style the 'X' button if it's a separate element */
-}
-
 .title-text {
     font-weight: normal;
     /* Pixel fonts often don't need bold */
@@ -219,4 +214,37 @@
 /* Hide the actual audio element */
 .audio-player-container audio {
     display: none;
+}
+
+/* Loading Message */
+.loading-message {
+    text-align: start;
+    padding: 10px 0;
+    font-size: 8px;
+    /* Adjust size as needed */
+}
+
+/* Animated Ellipses */
+.loading-dots span {
+    animation: blink 1s infinite;
+}
+
+.loading-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes blink {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0;
+    }
 }
