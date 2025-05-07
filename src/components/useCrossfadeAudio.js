@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
+import { CROSSFADE_DURATION_MS, VOLUME_STEPS } from '../config';
 
-const useCrossfadeAudio = (stations, currentStationId, CROSSFADE_DURATION_MS, VOLUME_STEPS) => {
+const useCrossfadeAudio = (stations, currentStationId) => {
   const stationAudioRefs = useRef({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -73,7 +74,7 @@ const useCrossfadeAudio = (stations, currentStationId, CROSSFADE_DURATION_MS, VO
       setIsPlaying(false);
       setIsTransitioning(false); // End transition if station becomes null
     }
-  }, [currentStationId, stations, VOLUME_STEPS, CROSSFADE_DURATION_MS]); // Rerun when currentStationId or config changes
+  }, [currentStationId, stations]); // Rerun when currentStationId or stations changes
 
   // Function to handle station selection
   const handleStationSelect = async (stationId) => {

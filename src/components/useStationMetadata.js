@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { METADATA_FETCH_URL, METADATA_FETCH_INTERVAL_MS } from '../config';
 
 const useStationMetadata = (currentStationId, stations) => {
   const [artist, setArtist] = useState('unknown artist');
@@ -13,7 +14,7 @@ const useStationMetadata = (currentStationId, stations) => {
     }
 
     try {
-      const response = await fetch('https://3ff645f3216a4de6.ngrok.app/status-json.xsl');
+      const response = await fetch(METADATA_FETCH_URL);
       if (!response.ok) {
         console.error(`useStationMetadata: HTTP error! status: ${response.status}`);
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -57,7 +58,7 @@ const useStationMetadata = (currentStationId, stations) => {
   useEffect(() => {
     // Start fetching metadata for the selected station
     fetchMetadata(); // Initial fetch
-    const intervalId = setInterval(fetchMetadata, 15000); // Fetch metadata every 15 seconds
+    const intervalId = setInterval(fetchMetadata, METADATA_FETCH_INTERVAL_MS); // Fetch metadata every 15 seconds
 
     // Cleanup function for this effect
     return () => {

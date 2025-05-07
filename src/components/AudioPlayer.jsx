@@ -2,14 +2,11 @@ import React, { useState } from 'react';
 import './AudioPlayer.css';
 import useCrossfadeAudio from './useCrossfadeAudio';
 import useStationMetadata from './useStationMetadata';
+import { CROSSFADE_DURATION_MS, VOLUME_STEPS } from '../config';
 
 const AudioPlayer = ({ stations }) => {
   const [currentStationId, setCurrentStationId] = useState(null); // State to track the selected station
   const [loadingStations, setLoadingStations] = useState({});
-
-  // Configurable crossfade parameters
-  const CROSSFADE_DURATION_MS = 2000; // 1 second
-  const VOLUME_STEPS = 50; // Number of steps for volume change
 
   // Use custom hooks
   const { stationAudioRefs, isPlaying, isTransitioning, handleStationSelect: handleCrossfadeSelect, setIsPlaying } = useCrossfadeAudio(
