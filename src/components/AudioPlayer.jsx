@@ -332,6 +332,17 @@ const AudioPlayer = () => {
           audio.addEventListener('canplaythrough', onCanPlayThrough);
         });
 
+        // Immediately pause and mute all other stations
+        stations.forEach(station => {
+          if (station.id !== stationId) {
+            const outgoingAudio = stationAudioRefs.current[station.id];
+            if (outgoingAudio) {
+              outgoingAudio.pause();
+              console.log(`handleStationSelect: Immediately paused and muted outgoing station: ${station.name}`);
+            }
+          }
+        });
+
         // Now safe to switch and crossfade
         console.log('handleStationSelect: Stream ready, setting currentStationId and ending transition.');
         setCurrentStationId(stationId);
