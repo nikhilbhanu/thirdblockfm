@@ -27,8 +27,12 @@ const AudioPlayer = () => {
   const [trackName, setTrackName] = useState('unknown track');
   const [currentStationId, setCurrentStationId] = useState(null); // State to track the selected station
 
+  // New state variables for loading and transitions
+  const [loadingStations, setLoadingStations] = useState({});
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
   // Configurable crossfade parameters
-  const CROSSFADE_DURATION_MS = 1000; // 1 second
+  const CROSSFADE_DURATION_MS = 2000; // 1 second
   const VOLUME_STEPS = 50; // Number of steps for volume change
 
   const togglePlay = () => {
@@ -144,7 +148,7 @@ const AudioPlayer = () => {
 
         // Start fetching metadata for the selected station
         fetchMetadata(); // Initial fetch
-        const intervalId = setInterval(fetchMetadata, 5000); // Fetch metadata every 5 seconds
+        const intervalId = setInterval(fetchMetadata, 15000); // Fetch metadata every 5 seconds
 
         // Cleanup function for this effect
         return () => {
@@ -177,9 +181,7 @@ const AudioPlayer = () => {
       }
 
       // Ensure the incoming audio is ready before starting crossfade
-      // This might require tracking readiness state per station
-      // For now, we'll assume preload="auto" is sufficient and the stream is ready quickly.
-      // A more robust solution would wait for a 'canplaythrough' event here.
+      // We now wait for 'canplaythrough' in handleStationSelect, so we can proceed directly here.
 
       // Start playing the incoming audio immediately at volume 0
       incomingAudio.play().catch(error => {
@@ -295,15 +297,52 @@ const AudioPlayer = () => {
   }, []); // Run only once on mount
 
   // Function to handle station selection
-  const handleStationSelect = (stationId) => {
+  const handleStationSelect = async (stationId) => {
     console.log('handleStationSelect called for station:', stationId);
+    if (isTransitioning) {
+      console.log('handleStationSelect: Transition in progress, ignoring click.');
+      return; // Prevent multiple clicks during transition
+    }
+
     if (currentStationId === stationId) {
       // If the same station is clicked, toggle play/pause
+      console.log('handleStationSelect: Same station clicked, toggling play/pause.');
       togglePlay();
     } else {
       // If a different station is clicked, initiate crossfade
-      setCurrentStationId(stationId); // Set the target station
-      // Crossfade logic will be handled in a separate effect or function
+      console.log('handleStationSelect: Different station clicked, initiating transition to:', stationId);
+      setIsTransitioning(true);
+      setLoadingStations(prev => ({ ...prev, [stationId]: true }));
+
+      // Force reload stream for the incoming station
+      const audio = stationAudioRefs.current[stationId];
+      if (audio) {
+        console.log('handleStationSelect: Reloading stream for station:', stationId);
+        audio.src = ''; // Set src to empty to force reload
+        audio.src = `${stations.find(s => s.id === stationId).streamUrl}?t=${Date.now()}`; // Set new src with timestamp
+
+        // Wait for the stream to be ready to play through
+        console.log('handleStationSelect: Waiting for canplaythrough event.');
+        await new Promise(resolve => {
+          const onCanPlayThrough = () => {
+            console.log('handleStationSelect: canplaythrough event received.');
+            audio.removeEventListener('canplaythrough', onCanPlayThrough); // Clean up listener
+            resolve();
+          };
+          audio.addEventListener('canplaythrough', onCanPlayThrough);
+        });
+
+        // Now safe to switch and crossfade
+        console.log('handleStationSelect: Stream ready, setting currentStationId and ending transition.');
+        setCurrentStationId(stationId);
+        setLoadingStations(prev => ({ ...prev, [stationId]: false }));
+        setIsTransitioning(false);
+
+      } else {
+        console.error('handleStationSelect: Audio element not found for station:', stationId);
+        setLoadingStations(prev => ({ ...prev, [stationId]: false }));
+        setIsTransitioning(false);
+      }
     }
   };
 
@@ -343,13 +382,14 @@ const AudioPlayer = () => {
             {stations.map(station => (
               <div
                 key={station.id}
-                className={`station-switch ${currentStationId === station.id ? 'active' : ''}`}
+                className={`station-switch ${currentStationId === station.id ? 'active' : ''} ${loadingStations[station.id] ? 'loading-dots' : ''}`}
                 onClick={() => handleStationSelect(station.id)}
                 role="switch"
                 aria-checked={currentStationId === station.id}
                 aria-label={station.name} // For accessibility
-                tabIndex={0} // Make it focusable
-                onKeyPress={(e) => { if (e.key === 'Enter' || e.key === ' ') handleStationSelect(station.id); }} // Keyboard interaction
+                tabIndex={isTransitioning ? -1 : 0} // Make it focusable unless transitioning
+                onKeyPress={(e) => { if (!isTransitioning && (e.key === 'Enter' || e.key === ' ')) handleStationSelect(station.id); }} // Keyboard interaction
+                style={{ pointerEvents: isTransitioning ? 'none' : 'auto' }} // Disable clicks during transition
               >
                 <div className="switch-track">
                   <div className="switch-handle"></div>
