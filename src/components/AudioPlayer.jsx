@@ -20,8 +20,40 @@ const stations = [
 const AudioPlayer = () => {
   // Use a ref to store audio elements for each station
   const stationAudioRefs = useRef({});
-  const [isLoading, setIsLoading] = useState(true); // State for initial loading
+  const serverStatusCheck = useRef(false); // Ref to track if the initial fetch has occurred
+  const [isReady, setIsReady] = useState(false); // State for initial loading
   const [isPlaying, setIsPlaying] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('loading...'); // State for status message
+
+  // Effect to ping the status URL on component load
+  useEffect(() => {
+    // Only perform the fetch if it hasn't been done yet
+    if (!serverStatusCheck.current) {
+      serverStatusCheck.current = true; // Mark as fetched
+
+      const checkServerStatus = async () => {
+        try {
+          const response = await fetch('https://3ff645f3216a4de6.ngrok.app/status-json.xsl');
+          if (response.ok) {
+            console.log('Server is online.');
+            setIsReady(true);
+            setStatusMessage('Ready');
+          } else {
+            console.error('Server status check failed:', response.status);
+            setIsReady(false); // Keep isReady false if server is not alive
+            setStatusMessage('offline');
+          }
+        } catch (error) {
+          console.error('Error pinging server status:', error);
+          setIsReady(false); // Keep isReady false on network error
+          setStatusMessage('offline');
+        }
+      };
+
+      checkServerStatus();
+    }
+  }, []); // Empty dependency array ensures this runs only once on mount
+
   const [isBuffering, setIsBuffering] = useState(false); // State for overall buffering indication
   const [artist, setArtist] = useState('unknown artist');
   const [trackName, setTrackName] = useState('unknown track');
@@ -240,62 +272,6 @@ const AudioPlayer = () => {
     }
   }, [currentStationId, stations, VOLUME_STEPS, CROSSFADE_DURATION_MS]); // Rerun when currentStationId or config changes
 
-  // Effect to handle pre-buffering and setting up audio elements on mount
-  useEffect(() => {
-    console.log('Setting up audio elements and pre-buffering on mount.');
-    const stationReadiness = {}; // Use a local object to track readiness
-    let stationsReadyCount = 0;
-
-    stations.forEach(station => {
-      const audio = stationAudioRefs.current[station.id];
-      if (audio) {
-        // Audio element is already created in JSX with src and preload="auto"
-        // Add canplaythrough listener to track when each station is ready
-        const handleCanPlayThrough = () => {
-          console.log(`Station ${station.name} is ready to play.`);
-          if (!stationReadiness[station.id]) { // Prevent double counting if event fires multiple times
-            stationReadiness[station.id] = true;
-            stationsReadyCount++;
-            if (stationsReadyCount === stations.length) {
-              console.log('All stations are ready.');
-              setIsLoading(false); // All stations are ready, hide loading
-            }
-          }
-          // If this is the currently selected station, update isBuffering state
-          if (currentStationId === station.id) {
-            setIsBuffering(false);
-          }
-        };
-        audio.addEventListener('canplaythrough', handleCanPlayThrough);
-
-        // Set initial volume to 0
-        audio.volume = 0;
-
-        // Initial check for buffering state if a station is already selected on mount
-        if (currentStationId === station.id && !stationReadiness[station.id]) {
-          setIsBuffering(true);
-        }
-
-
-        // Clean up listener on unmount
-        // Store listeners to remove them correctly
-        audio._canplaythroughListener = handleCanPlayThrough;
-      }
-    });
-
-    // Cleanup function for this effect
-    return () => {
-      console.log('Cleaning up pre-buffering effect.');
-      stations.forEach(station => {
-        const audio = stationAudioRefs.current[station.id];
-        if (audio && audio._canplaythroughListener) {
-          audio.removeEventListener('canplaythrough', audio._canplaythroughListener);
-          delete audio._canplaythroughListener; // Clean up the stored listener
-        }
-      });
-    };
-  }, []); // Run only once on mount
-
   // Function to handle station selection
   const handleStationSelect = async (stationId) => {
     console.log('handleStationSelect called for station:', stationId);
@@ -376,9 +352,9 @@ const AudioPlayer = () => {
         {/* Add window control icons (minimize, maximize, close) if desired */}
       </div>
 
-      {isLoading ? (
+      {!isReady ? ( // Display status message while isReady is false
         <div className="loading-message">
-          Loading<span className="loading-dots"><span>.</span><span>.</span><span>.</span></span>
+          {statusMessage}
         </div>
       ) : (
         <>
