@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import './AudioPlayer.css';
+import webAudioManager from '../utils/webAudioManager'; // Import the WebAudioManager
+import AudioVisualizer from './AudioVisualizer'; // Import AudioVisualizer
 
 // Define the available stations
 const stations = [
@@ -20,12 +22,14 @@ const stations = [
 const AudioPlayer = () => {
   // Use a ref to store audio elements for each station
   const stationAudioRefs = useRef({});
-  const [isLoading, setIsLoading] = useState(true); // State for initial loading
+  const [isLoading, setIsLoading] = useState(true); // State for initial loading (stations pre-buffering)
+  const [isAudioContextStarted, setIsAudioContextStarted] = useState(false); // State for Web Audio initialization
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false); // State for overall buffering indication
   const [artist, setArtist] = useState('unknown artist');
   const [trackName, setTrackName] = useState('unknown track');
   const [currentStationId, setCurrentStationId] = useState(null); // State to track the selected station
+  const [analyserForVisualizer, setAnalyserForVisualizer] = useState(null); // State to hold the analyser node for the visualizer
 
   // New state variables for loading and transitions
   const [loadingStations, setLoadingStations] = useState({});
@@ -243,58 +247,94 @@ const AudioPlayer = () => {
   // Effect to handle pre-buffering and setting up audio elements on mount
   useEffect(() => {
     console.log('Setting up audio elements and pre-buffering on mount.');
-    const stationReadiness = {}; // Use a local object to track readiness
+    const stationReadiness = {};
     let stationsReadyCount = 0;
 
-    stations.forEach(station => {
-      const audio = stationAudioRefs.current[station.id];
-      if (audio) {
-        // Audio element is already created in JSX with src and preload="auto"
-        // Add canplaythrough listener to track when each station is ready
-        const handleCanPlayThrough = () => {
-          console.log(`Station ${station.name} is ready to play.`);
-          if (!stationReadiness[station.id]) { // Prevent double counting if event fires multiple times
-            stationReadiness[station.id] = true;
-            stationsReadyCount++;
-            if (stationsReadyCount === stations.length) {
-              console.log('All stations are ready.');
-              setIsLoading(false); // All stations are ready, hide loading
+    const allStationsReadyPromise = new Promise((resolve) => {
+      if (stations.length === 0) {
+        resolve();
+        return;
+      }
+      stations.forEach(station => {
+        const audio = stationAudioRefs.current[station.id];
+        if (audio) {
+          const handleCanPlayThrough = () => {
+            console.log(`Station ${station.name} is ready to play.`);
+            if (!stationReadiness[station.id]) {
+              stationReadiness[station.id] = true;
+              stationsReadyCount++;
+              if (stationsReadyCount === stations.length) {
+                console.log('All stations are ready for playback.');
+                setIsLoading(false); // Hide initial loading message for stations
+                resolve(); // Resolve the promise when all stations are ready
+              }
             }
+            if (currentStationId === station.id) {
+              setIsBuffering(false);
+            }
+            // Remove listener after first fire to prevent multiple calls if needed,
+            // or manage via a flag like stationReadiness.
+          };
+          audio.addEventListener('canplaythrough', handleCanPlayThrough, { once: true }); // Use { once: true }
+          audio.volume = 0;
+          if (currentStationId === station.id && !stationReadiness[station.id]) {
+            setIsBuffering(true);
           }
-          // If this is the currently selected station, update isBuffering state
-          if (currentStationId === station.id) {
-            setIsBuffering(false);
+          audio._canplaythroughListener = handleCanPlayThrough; // Keep ref for cleanup
+        } else {
+          // If an audio element isn't found, decrement total needed or handle error
+          stationsReadyCount++;
+          if (stationsReadyCount === stations.length) {
+            resolve();
           }
-        };
-        audio.addEventListener('canplaythrough', handleCanPlayThrough);
-
-        // Set initial volume to 0
-        audio.volume = 0;
-
-        // Initial check for buffering state if a station is already selected on mount
-        if (currentStationId === station.id && !stationReadiness[station.id]) {
-          setIsBuffering(true);
         }
+      });
+    });
 
-
-        // Clean up listener on unmount
-        // Store listeners to remove them correctly
-        audio._canplaythroughListener = handleCanPlayThrough;
+    // After all stations are ready, and if Web Audio is initialized, create source nodes
+    allStationsReadyPromise.then(() => {
+      if (webAudioManager.isInitialized) {
+        stations.forEach(station => {
+          const audioEl = stationAudioRefs.current[station.id];
+          if (audioEl) {
+            webAudioManager.createOrGetSourceNode(audioEl, station.id);
+          }
+        });
+        setAnalyserForVisualizer(webAudioManager.getAnalyserNode());
       }
     });
 
-    // Cleanup function for this effect
     return () => {
-      console.log('Cleaning up pre-buffering effect.');
+      console.log('Cleaning up pre-buffering effect and Web Audio Manager.');
       stations.forEach(station => {
         const audio = stationAudioRefs.current[station.id];
         if (audio && audio._canplaythroughListener) {
-          audio.removeEventListener('canplaythrough', audio._canplaythroughListener);
-          delete audio._canplaythroughListener; // Clean up the stored listener
+          // The {once: true} option handles listener removal, but if not used:
+          // audio.removeEventListener('canplaythrough', audio._canplaythroughListener);
+          // delete audio._canplaythroughListener;
         }
       });
+      // webAudioManager.destroy(); // Consider if destroy is needed on component unmount or elsewhere
     };
-  }, []); // Run only once on mount
+  }, [webAudioManager.isInitialized]); // Rerun if webAudioManager initialization state changes
+
+  const handleStartAudioContext = () => {
+    if (!webAudioManager.isInitialized) {
+      webAudioManager.init();
+      webAudioManager.resumeContext(); // Attempt to resume context immediately
+      setIsAudioContextStarted(true); // Update state to reflect Web Audio is started
+      // After initializing, if stations are already loaded, create source nodes
+      if (!isLoading) { // isLoading is false when stations are ready
+        stations.forEach(station => {
+          const audioEl = stationAudioRefs.current[station.id];
+          if (audioEl) {
+            webAudioManager.createOrGetSourceNode(audioEl, station.id);
+          }
+        });
+      }
+      setAnalyserForVisualizer(webAudioManager.getAnalyserNode());
+    }
+  };
 
   // Function to handle station selection
   const handleStationSelect = async (stationId) => {
@@ -365,20 +405,30 @@ const AudioPlayer = () => {
           key={station.id}
           ref={el => stationAudioRefs.current[station.id] = el}
           src={station.streamUrl}
-          preload="auto" // Preload audio on page load
-          volume={0} // Start with volume 0
+          preload="auto"
+          volume={0}
+          crossOrigin="anonymous" // Required for MediaElementSourceNode with remote audio
         />
       ))}
 
       {/* Title Bar */}
       <div className="title-bar">
         <span>third block fm</span>
-        {/* Add window control icons (minimize, maximize, close) if desired */}
       </div>
 
-      {isLoading ? (
+      {!isAudioContextStarted ? (
+        <div className="loading-screen"> {/* Use a specific class for the initial screen */}
+          <button onClick={handleStartAudioContext} className="control-button start-button">
+            START
+          </button>
+          <div className="loading-message">
+            {isLoading ? 'Loading Stations...' : 'Ready to Start'}
+            {isLoading && <span className="loading-dots"><span>.</span><span>.</span><span>.</span></span>}
+          </div>
+        </div>
+      ) : isLoading ? ( // This isLoading is for stations after context has started
         <div className="loading-message">
-          Loading<span className="loading-dots"><span>.</span><span>.</span><span>.</span></span>
+          Loading Stations<span className="loading-dots"><span>.</span><span>.</span><span>.</span></span>
         </div>
       ) : (
         <>
@@ -387,6 +437,13 @@ const AudioPlayer = () => {
             <p>artist: {artist}</p>
             <p>track: {trackName}</p>
           </div>
+
+          {/* Visualizer Area */}
+          {analyserForVisualizer && (
+            <div className="visualizer-area">
+              <AudioVisualizer analyser={analyserForVisualizer} />
+            </div>
+          )}
 
           {/* Controls Area - Now contains station buttons */}
           <div className="controls-area">
@@ -397,15 +454,15 @@ const AudioPlayer = () => {
                 onClick={() => handleStationSelect(station.id)}
                 role="switch"
                 aria-checked={currentStationId === station.id}
-                aria-label={station.name} // For accessibility
-                tabIndex={isTransitioning ? -1 : 0} // Make it focusable unless transitioning
-                onKeyPress={(e) => { if (!isTransitioning && (e.key === 'Enter' || e.key === ' ')) handleStationSelect(station.id); }} // Keyboard interaction
-                style={{ pointerEvents: isTransitioning ? 'none' : 'auto' }} // Disable clicks during transition
+                aria-label={station.name}
+                tabIndex={isTransitioning ? -1 : 0}
+                onKeyPress={(e) => { if (!isTransitioning && (e.key === 'Enter' || e.key === ' ')) handleStationSelect(station.id); }}
+                style={{ pointerEvents: isTransitioning ? 'none' : 'auto' }}
               >
                 <div className="switch-track">
                   <div className="switch-handle"></div>
                 </div>
-                <span className="station-name-label">{station.name.toUpperCase()}</span> {/* Display station name */}
+                <span className="station-name-label">{station.name.toUpperCase()}</span>
               </div>
             ))}
           </div>

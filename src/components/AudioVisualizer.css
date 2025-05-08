@@ -1,0 +1,7 @@
+.audio-visualizer-canvas {
+    display: block;
+    margin: 1em auto;
+    background-color: #141414;
+    /* Same as canvas fillStyle for consistency */
+    border: 1px solid #333;
+}

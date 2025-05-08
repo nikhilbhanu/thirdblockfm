@@ -365,3 +365,53 @@
         opacity: 0;
     }
 }
+
+/* Loading Screen before Web Audio context is started */
+.loading-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    min-height: 150px;
+    /* Ensure it has some height */
+}
+
+.loading-screen .loading-message {
+    margin-top: 15px;
+    /* Space between button and message */
+    text-align: center;
+    /* Center the text */
+}
+
+.start-button {
+    padding: 10px 20px;
+    /* Make start button a bit larger */
+    font-size: 12px;
+    /* Larger font for start button */
+    min-width: 100px;
+}
+
+/* Visualizer Area */
+.visualizer-area {
+    padding: 8px 0;
+    /* Add some padding around the visualizer */
+    display: flex;
+    justify-content: center;
+    /* Center the canvas if it's smaller than the container */
+    align-items: center;
+    border-top: 1px solid #000000;
+    /* Separator line */
+    border-bottom: 1px solid #000000;
+    /* Separator line */
+    margin: 8px 0;
+    /* Margin above and below */
+    background-color: #D6D1C4;
+    /* Slightly different background for visualizer area */
+}
+
+.audio-visualizer-canvas {
+    /* Styles for the canvas itself are in AudioVisualizer.css */
+    /* Ensure it doesn't overflow its container if fixed size */
+    max-width: 100%;
+}
