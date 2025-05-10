@@ -12,6 +12,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "icecast-metadata-player": "^1.17.12",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

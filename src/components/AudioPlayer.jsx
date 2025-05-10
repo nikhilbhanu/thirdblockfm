@@ -1,356 +1,275 @@
 import React, { useRef, useState, useEffect } from 'react';
+import IcecastMetadataPlayer from 'icecast-metadata-player';
 import './AudioPlayer.css';
-import ConsoleLogDisplay from './ConsoleLogDisplay'; // Import ConsoleLogDisplay
+import ConsoleLogDisplay from './ConsoleLogDisplay';
 
 // Define the available stations
 const stations = [
   {
     id: 'dreamy',
     name: 't',
-    streamUrl: 'https://3ff645f3216a4de6.ngrok.app/dreamy',
+    streamUrl: 'https://3ff645f3216a4de6.ngrok.app/',
     mountPoint: 'dreamy'
   },
   {
     id: 'boogie',
     name: 'b',
-    streamUrl: 'https://3ff645f3216a4de6.ngrok.app/boogie',
+    streamUrl: 'https://3ff645f3216a4de6.ngrok.app/',
     mountPoint: 'boogie'
   }
 ];
 
 const AudioPlayer = () => {
-  // Use a ref to store audio elements for each station
-  const stationAudioRefs = useRef({});
-  const [isLoading, setIsLoading] = useState(false); // State for initial loading - set to false initially
+  const playerRef = useRef(null);
+  const metadataAwaitingRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(false); // State for overall buffering indication
   const [artist, setArtist] = useState('unknown artist');
   const [trackName, setTrackName] = useState('unknown track');
-  const [currentStationId, setCurrentStationId] = useState(null); // State to track the selected station
-
-  // New state variables for loading and transitions
-  const [loadingStations, setLoadingStations] = useState({});
+  const [pendingStationId, setPendingStationId] = useState(null);
+  const [currentStationId, setCurrentStationId] = useState(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [flashingStationId, setFlashingStationId] = useState(null);
+  const [error, setError] = useState(null);
 
-  // Configurable crossfade parameters
-  const CROSSFADE_DURATION_MS = 2000; // 1 second
-  const VOLUME_STEPS = 50; // Number of steps for volume change
-
-  const togglePlay = () => {
-    console.log('togglePlay called. Current isPlaying:', isPlaying, 'currentStationId:', currentStationId);
-    const audio = currentStationId ? stationAudioRefs.current[currentStationId] : null;
-    if (!audio) {
-      console.log('togglePlay: No audio element found for currentStationId. Aborting.');
-      return; // Guard against no station selected or audio element not found
-    }
-
-    if (isPlaying) {
-      // If currently playing, fade out the current station
-      console.log('togglePlay: Currently playing, fading out station:', currentStationId);
-      setCurrentStationId(null); // Set currentStationId to null to turn off the switch immediately
-      const audio = stationAudioRefs.current[currentStationId];
-      if (audio) {
-        const fadeInterval = setInterval(() => {
-          if (audio.volume > 0) {
-            audio.volume = Math.max(0, audio.volume - (1 / VOLUME_STEPS));
-          } else {
-            clearInterval(fadeInterval);
-            audio.pause();
-            console.log('Fade out complete on togglePlay.');
-            setIsPlaying(false); // Set isPlaying to false when fade out finishes
-          }
-        }, CROSSFADE_DURATION_MS / VOLUME_STEPS);
-
-        // Cleanup interval on component unmount or another togglePlay call
-        // This might require storing the interval ID in a ref
-      }
-    } else {
-      // If currently paused, fade in the current station
-      console.log('togglePlay: Currently paused, fading in station:', currentStationId);
-      const audio = stationAudioRefs.current[currentStationId];
-      if (audio) {
-        // Ensure it's playing (it might have been paused when faded out)
-        audio.play().catch(error => {
-          console.error("Error attempting to play audio on togglePlay:", error);
-          // Handle potential autoplay policy issues
-        });
-
-        // Fade in volume
-        const fadeInterval = setInterval(() => {
-          if (audio.volume < 1) {
-            audio.volume = Math.min(1, audio.volume + (1 / VOLUME_STEPS));
-          } else {
-            clearInterval(fadeInterval);
-            console.log('Fade in complete on togglePlay.');
-            setIsPlaying(true); // Set isPlaying to true when fade in finishes
-          }
-        }, CROSSFADE_DURATION_MS / VOLUME_STEPS);
-
-        // Cleanup interval on component unmount or another togglePlay call
-        // This might require storing the interval ID in a ref
-      }
-    }
-  };
-
-  const fetchMetadata = async () => {
-    console.log('fetchMetadata called. currentStationId:', currentStationId);
-    if (!currentStationId) return; // Don't fetch if no station is selected
-
-    try {
-      const response = await fetch('https://3ff645f3216a4de6.ngrok.app/status-json.xsl');
-      if (!response.ok) {
-        console.error(`fetchMetadata: HTTP error! status: ${response.status}`);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      // console.log('fetchMetadata successful. Data:', data);
-
-      const selectedStation = stations.find(station => station.id === currentStationId);
-
-      if (data && data.icestats && Array.isArray(data.icestats.source) && selectedStation) {
-        // Find the source that matches the selected station's mount point
-        const currentSource = data.icestats.source.find(source =>
-          source.listenurl && source.listenurl.includes(`/${selectedStation.mountPoint}`)
-        );
-
-        if (currentSource && currentSource.title) {
-          const title = currentSource.title;
-          const parts = title.split(' - ');
-          const currentArtist = parts[0]?.trim() || 'unknown artist';
-          const currentTrackName = parts.slice(1).join(' - ').trim() || 'unknown track';
-          setArtist(currentArtist);
-          setTrackName(currentTrackName);
-        } else {
-          // Metadata not found for the selected station
-          setArtist('unknown artist');
-          setTrackName('unknown track');
-        }
-      } else {
-        // Data structure is not as expected or station not found
-        setArtist('unknown artist');
-        setTrackName('unknown track');
-      }
-    } catch (error) {
-      console.error('Error fetching metadata:', error);
-      setArtist('Error');
-      setTrackName('fetching metadata');
-    }
-  };
-
-  // Effect to handle station changes and metadata fetching
-  useEffect(() => {
-    if (currentStationId) {
-      // Find the selected station object
-      const selectedStation = stations.find(station => station.id === currentStationId);
-
-      if (selectedStation) {
-        // The old logic for single audioRef is removed.
-        // Metadata fetching is still relevant for the currently selected station.
-
-        // Start fetching metadata for the selected station
-        fetchMetadata(); // Initial fetch
-        const intervalId = setInterval(fetchMetadata, 15000); // Fetch metadata every 5 seconds
-
-        // Cleanup function for this effect
-        return () => {
-          console.log(`Cleaning up metadata effect for station: ${selectedStation.name}`);
-          clearInterval(intervalId);
-        };
-      }
-    } else {
-      console.log('currentStationId is null. Clearing state.');
-      // If no station is selected, clear metadata
-      setArtist('unknown artist');
-      setTrackName('unknown track');
-    }
-    // Cleanup function for the case where currentStationId becomes null
-    return () => {
-      console.log('Running cleanup for metadata useEffect on currentStationId change.');
-    };
-  }, [currentStationId]); // Rerun this effect when currentStationId changes
-
-
-  // Effect to handle crossfading when currentStationId changes
-  useEffect(() => {
-    if (currentStationId) {
-      console.log('currentStationId changed, initiating crossfade to:', currentStationId);
-      const incomingAudio = stationAudioRefs.current[currentStationId];
-
-      if (!incomingAudio) {
-        console.error('Incoming audio element not found for station:', currentStationId);
-        return;
-      }
-
-      // Ensure the incoming audio is ready before starting crossfade
-      // We now wait for 'canplaythrough' in handleStationSelect, so we can proceed directly here.
-
-      // Start playing the incoming audio immediately at volume 0
-      incomingAudio.play().catch(error => {
-        console.error("Error attempting to play incoming audio:", error);
-        // Handle potential autoplay policy issues here
+  // Helper: Update Media Session API
+  const updateMediaSession = (artist, trackName, isPlaying) => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: trackName,
+        artist: artist,
+        album: 'third block fm',
+        artwork: []
       });
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (playerRef.current) playerRef.current.play();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (playerRef.current) playerRef.current.stop();
+      });
+    }
+  };
 
-      const fadeInterval = setInterval(() => {
-        let allFaded = true;
+  // Initialize player on mount
+  useEffect(() => {
+    playerRef.current = null;
+    setIsPlaying(false);
+    setArtist('unknown artist');
+    setTrackName('unknown track');
+    setCurrentStationId(null);
+    setPendingStationId(null);
 
-        // Fade out all other stations
-        stations.forEach(station => {
-          if (station.id !== currentStationId) {
-            const outgoingAudio = stationAudioRefs.current[station.id];
-            if (outgoingAudio) {
-              if (outgoingAudio.volume > 0) {
-                outgoingAudio.volume = Math.max(0, outgoingAudio.volume - (1 / VOLUME_STEPS));
-                allFaded = false;
-              }
-              if (outgoingAudio.volume === 0) {
-                outgoingAudio.pause();
-                console.log(`Paused outgoing station: ${station.name}`);
-              }
-            }
-          }
-        });
-
-        // Fade in the incoming station
-        if (incomingAudio.volume < 1) {
-          incomingAudio.volume = Math.min(1, incomingAudio.volume + (1 / VOLUME_STEPS));
-          allFaded = false;
+    return () => {
+      if (playerRef.current) {
+        // Remove event listeners if present
+        const handlers = playerRef.current._handlers;
+        if (handlers) {
+          playerRef.current.removeEventListener('metadata', handlers.handleMetadata);
+          playerRef.current.removeEventListener('play', handlers.handlePlay);
+          playerRef.current.removeEventListener('pause', handlers.handlePause);
+          playerRef.current.removeEventListener('error', handlers.handleError);
         }
-
-        if (allFaded) {
-          clearInterval(fadeInterval);
-          console.log('Crossfade complete.');
-          setIsPlaying(true); // Set isPlaying to true when crossfade finishes
+        // Stop playback
+        if (typeof playerRef.current.stop === 'function') {
+          playerRef.current.stop();
         }
-      }, CROSSFADE_DURATION_MS / VOLUME_STEPS);
+        playerRef.current = null;
+      }
+    };
+  }, []);
 
-      // Cleanup function to clear interval if station changes before fade completes
-      return () => {
-        console.log('Cleaning up crossfade effect.');
-        clearInterval(fadeInterval);
+  // Handle station change (pendingStationId triggers the switch)
+  useEffect(() => {
+    if (!pendingStationId) return;
+
+    const selectedStation = stations.find(station => station.id === pendingStationId);
+    if (!selectedStation) return;
+
+    // Construct the full stream endpoint URL
+    const endpointUrl = selectedStation.streamUrl.replace(/\/$/, '') + '/' + selectedStation.mountPoint;
+
+    setIsTransitioning(true);
+    setFlashingStationId(pendingStationId);
+    metadataAwaitingRef.current = true;
+    setError(null);
+
+    // If player doesn't exist, create it
+    if (!playerRef.current) {
+      const options = {
+        enableLogging: import.meta.env.DEV,
+        metadataTypes: ['icy']
       };
 
-    } else {
-      // If currentStationId becomes null, pause all audio
-      console.log('currentStationId is null, pausing all audio.');
-      stations.forEach(station => {
-        const audio = stationAudioRefs.current[station.id];
-        if (audio) {
-          audio.pause();
-          audio.volume = 0; // Reset volume
+      playerRef.current = new IcecastMetadataPlayer([endpointUrl], options);
+
+      // Event handler references for cleanup
+      const handleMetadata = (event) => {
+        const metadata = event.detail?.[0] || {};
+        let streamTitle = metadata.StreamTitle || metadata.streamTitle || '';
+        if (streamTitle) {
+          const [artist, ...trackParts] = streamTitle.split(' - ');
+          setArtist(artist?.trim() || 'unknown artist');
+          setTrackName(trackParts.join(' - ').trim() || 'unknown track');
+          setError(null);
+          updateMediaSession(artist?.trim() || 'unknown artist', trackParts.join(' - ').trim() || 'unknown track', isPlaying);
+        } else {
+          setArtist('unknown artist');
+          setTrackName('unknown track');
+          setError('No metadata available');
+          updateMediaSession('unknown artist', 'unknown track', isPlaying);
         }
+        // Only set isTransitioning to false on the first metadata after a switch
+        if (metadataAwaitingRef.current) {
+          setIsTransitioning(false);
+          metadataAwaitingRef.current = false;
+          // Ensure flashing effect is visible for at least 50ms
+          setTimeout(() => setFlashingStationId(null), 50);
+        }
+      };
+      const handlePlay = () => {
+        setIsPlaying(true);
+        setError(null);
+        updateMediaSession(artist, trackName, true);
+      };
+      const handlePause = () => {
+        setIsPlaying(false);
+        updateMediaSession(artist, trackName, false);
+      };
+      const handleError = (e) => {
+        setArtist('Error');
+        setTrackName('stream error');
+        setError('Stream error. Please try again.');
+        updateMediaSession('Error', 'stream error', false);
+      };
+
+      playerRef.current.addEventListener('metadata', handleMetadata);
+      playerRef.current.addEventListener('play', handlePlay);
+      playerRef.current.addEventListener('pause', handlePause);
+      playerRef.current.addEventListener('error', handleError);
+
+      // Store handlers for cleanup
+      playerRef.current._handlers = { handleMetadata, handlePlay, handlePause, handleError };
+
+      playerRef.current.play().then(() => {
+        setCurrentStationId(pendingStationId);
+        setPendingStationId(null);
+        setError(null);
+      }).catch((err) => {
+        setIsTransitioning(false);
+        setPendingStationId(null);
+        setFlashingStationId(null);
+        setError('Playback failed. Tap a station to retry.');
       });
-      setIsPlaying(false);
-    }
-  }, [currentStationId, stations, VOLUME_STEPS, CROSSFADE_DURATION_MS]); // Rerun when currentStationId or config changes
-
-  // Function to handle station selection
-  const handleStationSelect = async (stationId) => {
-    console.log('handleStationSelect called for station:', stationId);
-    if (isTransitioning) {
-      console.log('handleStationSelect: Transition in progress, ignoring click.');
-      return; // Prevent multiple clicks during transition
-    }
-
-    if (currentStationId === stationId) {
-      // If the same station is clicked, toggle play/pause
-      console.log('handleStationSelect: Same station clicked, toggling play/pause.');
-      togglePlay();
     } else {
-      // If a different station is clicked, initiate crossfade
-      console.log('handleStationSelect: Different station clicked, initiating transition to:', stationId);
-      setIsTransitioning(true);
-      setLoadingStations(prev => ({ ...prev, [stationId]: true }));
-
-      // Force reload stream for the incoming station
-      const audio = stationAudioRefs.current[stationId];
-      if (audio) {
-        console.log('handleStationSelect: Reloading stream for station:', stationId);
-        audio.src = ''; // Set src to empty to force reload
-        audio.src = `${stations.find(s => s.id === stationId).streamUrl}?t=${Date.now()}`; // Set new src with timestamp
-
-        // Wait for the stream to be ready to play through
-        console.log('handleStationSelect: Waiting for canplaythrough event.');
-        await new Promise(resolve => {
-          const onCanPlayThrough = () => {
-            console.log('handleStationSelect: canplaythrough event received.');
-            audio.removeEventListener('canplaythrough', onCanPlayThrough); // Clean up listener
-            resolve();
-          };
-          audio.addEventListener('canplaythrough', onCanPlayThrough);
+      // Switch endpoint for seamless transition
+      const optionsSwitch = {
+        enableLogging: import.meta.env.DEV,
+        metadataTypes: ['icy']
+      };
+      playerRef.current.switchEndpoint([endpointUrl], optionsSwitch)
+        .then(() => {
+          setCurrentStationId(pendingStationId);
+          setPendingStationId(null);
+          setError(null);
+        })
+        .catch(() => {
+          setIsTransitioning(false);
+          setPendingStationId(null);
+          setFlashingStationId(null);
+          setError('Failed to switch station. Please try again.');
         });
+    }
 
-        // Immediately pause and mute all other stations
-        stations.forEach(station => {
-          if (station.id !== stationId) {
-            const outgoingAudio = stationAudioRefs.current[station.id];
-            if (outgoingAudio) {
-              outgoingAudio.pause();
-              console.log(`handleStationSelect: Immediately paused and muted outgoing station: ${station.name}`);
-            }
-          }
-        });
+    // Cleanup on unmount
+    return () => {
+      // Do not destroy player here; keep it for seamless switching
+    };
+  }, [pendingStationId]);
 
-        // Now safe to switch and crossfade
-        console.log('handleStationSelect: Stream ready, setting currentStationId and ending transition.');
-        setCurrentStationId(stationId);
-        setLoadingStations(prev => ({ ...prev, [stationId]: false }));
-        setIsTransitioning(false);
-
-      } else {
-        console.error('handleStationSelect: Audio element not found for station:', stationId);
-        setLoadingStations(prev => ({ ...prev, [stationId]: false }));
-        setIsTransitioning(false);
+  // Handle station selection (radio group logic)
+  const handleStationSelect = (stationId) => {
+    if (isTransitioning) return;
+    if (currentStationId === stationId && isPlaying) {
+      // Clicking the active station stops playback and deselects all
+      if (playerRef.current) {
+        // Remove event listeners
+        const handlers = playerRef.current._handlers;
+        if (handlers) {
+          playerRef.current.removeEventListener('metadata', handlers.handleMetadata);
+          playerRef.current.removeEventListener('play', handlers.handlePlay);
+          playerRef.current.removeEventListener('pause', handlers.handlePause);
+          playerRef.current.removeEventListener('error', handlers.handleError);
+        }
+        playerRef.current.stop();
+        playerRef.current = null;
       }
+      setIsPlaying(false);
+      setCurrentStationId(null);
+      setPendingStationId(null);
+      setIsTransitioning(false);
+      setArtist('unknown artist');
+      setTrackName('unknown track');
+      updateMediaSession('unknown artist', 'unknown track', false);
+    } else {
+      // Clicking an inactive station starts playback for that station
+      setPendingStationId(stationId);
+      setIsTransitioning(true);
     }
   };
+
+  // Fallback for unsupported browsers
+  const isMediaSupported = typeof window.AudioContext !== "undefined" && typeof window.MediaSource !== "undefined";
 
   return (
     <div className="audio-player-container">
-      {import.meta.env.DEV && <ConsoleLogDisplay />} {/* Add the log display component conditionally */}
-      {/* Audio elements - hidden but controlled */}
-      {stations.map(station => (
-        <audio
-          key={station.id}
-          ref={el => stationAudioRefs.current[station.id] = el}
-          src={station.streamUrl}
-          volume={0} // Start with volume 0
-        />
-      ))}
-
-      {/* Title Bar */}
+      {import.meta.env.DEV && <ConsoleLogDisplay />}
       <div className="title-bar">
         <span>third block fm</span>
-        {/* Add window control icons (minimize, maximize, close) if desired */}
       </div>
-
-      {/* Info Area */}
       <div className="info-area">
         <p>artist: {artist}</p>
         <p>track: {trackName}</p>
       </div>
-
-      {/* Controls Area - Now contains station buttons */}
-      <div className="controls-area">
-        {stations.map(station => (
-          <div
-            key={station.id}
-            className={`station-switch ${currentStationId === station.id ? 'active' : ''} ${loadingStations[station.id] ? 'loading-dots' : ''}`}
-            onClick={() => handleStationSelect(station.id)}
-            role="switch"
-            aria-checked={currentStationId === station.id}
-            aria-label={station.name} // For accessibility
-            tabIndex={isTransitioning ? -1 : 0} // Make it focusable unless transitioning
-            onKeyPress={(e) => { if (!isTransitioning && (e.key === 'Enter' || e.key === ' ')) handleStationSelect(station.id); }} // Keyboard interaction
-            style={{ pointerEvents: isTransitioning ? 'none' : 'auto' }} // Disable clicks during transition
-          >
-            <div className="switch-track">
-              <div className="switch-handle"></div>
+      {error && (
+        <div className="error-message" style={{ color: 'red', padding: 8 }}>
+          {error}
+        </div>
+      )}
+      <div className="controls-area" role="radiogroup" aria-label="Station Selector">
+        {stations.map(station => {
+          const isActive = currentStationId === station.id && isPlaying && !isTransitioning;
+          const isFlashing = flashingStationId === station.id;
+          return (
+            <div
+              key={station.id}
+              className={`station-switch${isActive ? ' active' : ''}${isFlashing ? ' flashing' : ''}`}
+              onClick={() => handleStationSelect(station.id)}
+              role="radio"
+              aria-checked={isActive}
+              aria-label={station.name}
+              tabIndex={isTransitioning ? -1 : 0}
+              onKeyPress={(e) => { if (!isTransitioning && (e.key === 'Enter' || e.key === ' ')) handleStationSelect(station.id); }}
+              style={{ pointerEvents: isTransitioning ? 'none' : 'auto' }}
+            >
+              <div className="switch-track">
+                <div
+                  className="switch-handle"
+                  style={
+                    isFlashing
+                      ? { background: '#ccc', opacity: 0.6 }
+                      : undefined
+                  }
+                ></div>
+              </div>
+              <span className={`station-name-label${isFlashing ? ' flashing' : ''}`}>
+                {station.name.toUpperCase()}
+              </span>
             </div>
-            <span className="station-name-label">{station.name.toUpperCase()}</span> {/* Display station name */}
-          </div>
-        ))}
+          );
+        })}
       </div>
-    </div >
+      {/* Removed playback-controls and play/pause button */}
+    </div>
   );
 };
 
