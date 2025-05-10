@@ -19,6 +19,53 @@ const stations = [
 ];
 
 const AudioPlayer = () => {
+  // --- Radio Seek Sample Logic ---
+  // Ref for the radio-seek sample audio element
+  const radioSeekRef = useRef(null);
+  // Track previous playerState for transition detection
+  const prevPlayerStateRef = useRef("idle");
+
+  // Log audio errors for debugging
+  useEffect(() => {
+    const audio = radioSeekRef.current;
+    if (!audio) return;
+
+    // Log browser support for mp3 at mount
+    const canPlay = audio.canPlayType ? audio.canPlayType("audio/mpeg") : "";
+    if (!canPlay) {
+      console.warn("[RadioSeek] Browser does not support mp3 playback (audio/mpeg). canPlayType returned:", canPlay);
+    } else {
+      console.log("[RadioSeek] Browser reports mp3 support (audio/mpeg):", canPlay);
+    }
+
+    const onError = (e) => {
+      // Print detailed diagnostics
+      let errObj = audio.error;
+      let errMsg = "";
+      if (errObj) {
+        switch (errObj.code) {
+          case 1: errMsg = "MEDIA_ERR_ABORTED: fetching process aborted by user"; break;
+          case 2: errMsg = "MEDIA_ERR_NETWORK: error occurred when downloading"; break;
+          case 3: errMsg = "MEDIA_ERR_DECODE: error occurred when decoding"; break;
+          case 4: errMsg = "MEDIA_ERR_SRC_NOT_SUPPORTED: audio not supported or missing"; break;
+          default: errMsg = "Unknown error code";
+        }
+      }
+      console.error("[RadioSeek] Audio error event", {
+        event: e,
+        src: audio.src,
+        readyState: audio.readyState,
+        networkState: audio.networkState,
+        error: errObj,
+        errorMessage: errMsg,
+        canPlayType: canPlay,
+      });
+    };
+    audio.addEventListener("error", onError);
+    return () => {
+      audio.removeEventListener("error", onError);
+    };
+  }, []);
   // Dynamic player refs, one per station
   const playerRefs = useRef({});
   // Ref to track previous station for deferred stop
@@ -44,20 +91,11 @@ const AudioPlayer = () => {
         setPlayerState("error");
         setError("Loading timed out. Please try again.");
         setSelectedStationId(null);
+        console.log("[Transition] Loading timed out, resetting state");
       }, 3000);
       return () => clearTimeout(failsafe);
     }
   }, [playerState, selectedStationId]);
-
-  // Stop the old player when switching stations
-  useEffect(() => {
-    if (currentStationId && prevStationIdRef.current && prevStationIdRef.current !== currentStationId) {
-      if (playerRefs.current[prevStationIdRef.current]?.current) {
-        playerRefs.current[prevStationIdRef.current].current.stop();
-      }
-      prevStationIdRef.current = null;
-    }
-  }, [currentStationId]);
 
   // Helper: Update Media Session API
   const updateMediaSession = (artist, trackName, isPlaying) => {
@@ -97,74 +135,101 @@ const AudioPlayer = () => {
 
     setPlayerState("loading");
     setError(null);
+    console.log("[Transition] Station selection started, entering loading state for", selectedStationId);
 
-    const selectedStation = stations.find((station) => station.id === selectedStationId);
-    if (!selectedStation) return;
+    // Delay starting the new station to allow the radio-seek sample to play
+    const delayMs = 500; // Minimum time to play the sample (adjust as needed)
+    const timeout = setTimeout(() => {
+      // Failsafe: stop radio-seek sample before starting new station
+      if (radioSeekRef.current) {
+        radioSeekRef.current.pause();
+        radioSeekRef.current.currentTime = 0;
+        console.log("[Transition] Stopped radio-seek sample before starting new station in setTimeout");
+      }
 
-    // If player doesn't exist, create it
-    if (!playerRefs.current[selectedStationId].current) {
-      playerRefs.current[selectedStationId].current = new IcecastMetadataPlayer(selectedStation.streamUrl, {
-        enableLogging: import.meta.env.DEV,
-        metadataTypes: ["icy"],
-        onMetadata: (metadata) => {
-          let streamTitle = metadata?.StreamTitle || metadata?.TITLE || "";
-          if (streamTitle) {
-            const [artist, ...trackParts] = streamTitle.split(" - ");
-            setArtist(artist?.trim() || "unknown artist");
-            setTrackName(trackParts.join(" - ").trim() || "unknown track");
+      const selectedStation = stations.find((station) => station.id === selectedStationId);
+      if (!selectedStation) return;
+
+      // If player doesn't exist, create it
+      if (!playerRefs.current[selectedStationId].current) {
+        playerRefs.current[selectedStationId].current = new IcecastMetadataPlayer(selectedStation.streamUrl, {
+          enableLogging: import.meta.env.DEV,
+          metadataTypes: ["icy"],
+          onMetadata: (metadata) => {
+            let streamTitle = metadata?.StreamTitle || metadata?.TITLE || "";
+            if (streamTitle) {
+              const [artist, ...trackParts] = streamTitle.split(" - ");
+              setArtist(artist?.trim() || "unknown artist");
+              setTrackName(trackParts.join(" - ").trim() || "unknown track");
+              setError(null);
+              updateMediaSession(artist?.trim() || "unknown artist", trackParts.join(" - ").trim() || "unknown track", playerState === "playing");
+            } else {
+              setArtist("unknown artist");
+              setTrackName("unknown track");
+              setError("No metadata available");
+              updateMediaSession("unknown artist", "unknown track", playerState === "playing");
+            }
+            setPlayerState("playing");
+            setCurrentStationId(selectedStationId);
+            console.log("[Transition] Metadata received, switching to playing state for", selectedStationId);
+          },
+          onPlay: () => {
+            setPlayerState("playing");
+            setCurrentStationId(selectedStationId);
             setError(null);
-            updateMediaSession(artist?.trim() || "unknown artist", trackParts.join(" - ").trim() || "unknown track", playerState === "playing");
-          } else {
-            setArtist("unknown artist");
-            setTrackName("unknown track");
-            setError("No metadata available");
-            updateMediaSession("unknown artist", "unknown track", playerState === "playing");
-          }
-          setPlayerState("playing");
-          setCurrentStationId(selectedStationId);
-        },
-        onPlay: () => {
+            updateMediaSession(artist, trackName, true);
+            console.log("[Transition] onPlay: Now playing", selectedStationId);
+          },
+          onStop: () => {
+            setPlayerState("idle");
+            updateMediaSession(artist, trackName, false);
+            console.log("[Transition] onStop: Station stopped");
+          },
+          onError: () => {
+            setArtist("Error");
+            setTrackName("stream error");
+            setError("Stream error. Please try again.");
+            setPlayerState("error");
+            console.error("[Transition] onError: Stream error for", selectedStationId);
+          },
+        });
+      }
+
+      // Play the selected player
+      playerRefs.current[selectedStationId].current
+        .play()
+        .then(() => {
           setPlayerState("playing");
           setCurrentStationId(selectedStationId);
           setError(null);
-          updateMediaSession(artist, trackName, true);
-        },
-        onStop: () => {
-          setPlayerState("idle");
-          updateMediaSession(artist, trackName, false);
-        },
-        onError: () => {
-          setArtist("Error");
-          setTrackName("stream error");
-          setError("Stream error. Please try again.");
+          console.log("[Transition] Play promise resolved for", selectedStationId);
+        })
+        .catch((err) => {
           setPlayerState("error");
-        },
-      });
-    }
+          setError("Playback failed. Tap a station to retry.");
+          console.error("[Transition] Play promise rejected for", selectedStationId, err);
+        });
+    }, delayMs);
 
-    // Play the selected player
-    playerRefs.current[selectedStationId].current
-      .play()
-      .then(() => {
-        setPlayerState("playing");
-        setCurrentStationId(selectedStationId);
-        setError(null);
-      })
-      .catch(() => {
-        setPlayerState("error");
-        setError("Playback failed. Tap a station to retry.");
-      });
-
+    return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStationId]);
 
   // Handle station selection (radio group logic)
   const handleStationSelect = (stationId) => {
+    // Always stop the radio-seek sample at the start of any selection
+    if (radioSeekRef.current) {
+      radioSeekRef.current.pause();
+      radioSeekRef.current.currentTime = 0;
+      console.log("[Transition] Stopped radio-seek sample at start of handleStationSelect");
+    }
+
     if (currentStationId === stationId && playerState === "playing") {
       // Clicking the active station stops playback and deselects all
       if (playerRefs.current[stationId]?.current) {
         playerRefs.current[stationId].current.stop();
         playerRefs.current[stationId].current = null;
+        console.log("[Transition] Stopped and cleared current station:", stationId);
       }
       setPlayerState("idle");
       setCurrentStationId(null);
@@ -172,18 +237,86 @@ const AudioPlayer = () => {
       setArtist("unknown artist");
       setTrackName("unknown track");
       updateMediaSession("unknown artist", "unknown track", false);
+      // Also stop the radio-seek sample if playing (already done above)
     } else {
       // Clicking an inactive station starts playback for that station
+      // --- IMMEDIATE STOP of current station before transition ---
+      if (currentStationId && playerRefs.current[currentStationId]?.current) {
+        playerRefs.current[currentStationId].current.stop();
+        playerRefs.current[currentStationId].current = null;
+        console.log("[Transition] Immediately stopped current station before switching to", stationId);
+      }
       prevStationIdRef.current = currentStationId;
+
+      // Play radio-seek sample for every transition
+      const audio = radioSeekRef.current;
+      if (audio) {
+        try {
+          // Always stop before playing (already done above)
+          const playSample = () => {
+            const maxSeek = Math.min(60, audio.duration || 60);
+            const seek = Math.random() * maxSeek;
+            audio.currentTime = seek;
+            audio.play().then(() => {
+              console.log(`[Transition] Playing radio-seek sample at ${seek.toFixed(2)}s (max ${maxSeek.toFixed(2)}s)`);
+            }).catch((err) => {
+              console.error("[Transition] Failed to play radio-seek sample", err);
+            });
+          };
+          if (audio.readyState >= 1) {
+            playSample();
+          } else {
+            audio.addEventListener("loadedmetadata", playSample, { once: true });
+            audio.load();
+          }
+        } catch (err) {
+          console.error("[Transition] Error during flashing start (radio-seek)", err);
+        }
+      } else {
+        console.warn("[Transition] radioSeekRef is null on flashing start");
+      }
+
       setSelectedStationId(stationId);
+      console.log("[Transition] Selected new station:", stationId, "Previous:", currentStationId);
     }
   };
 
   // Fallback for unsupported browsers
   const isMediaSupported = typeof window.AudioContext !== "undefined" && typeof window.MediaSource !== "undefined";
 
+  // --- Transition Feature: Flashing/Radio Seek Sample ---
+  useEffect(() => {
+    const prev = prevPlayerStateRef.current;
+    const curr = playerState;
+    const audio = radioSeekRef.current;
+
+    // Stop radio-seek sample on any transition out of loading (playing, idle, or error)
+    if (
+      prev === "loading" &&
+      (curr === "playing" || curr === "idle" || curr === "error")
+    ) {
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+        console.log("[Transition] Stopped radio-seek sample on transition to", curr);
+      }
+    }
+
+    prevPlayerStateRef.current = curr;
+  }, [playerState]);
+
   return (
     <div className="audio-player-container">
+      {/* Hidden radio-seek sample audio element for transition */}
+      <audio
+        ref={radioSeekRef}
+        src="/thirdblockfm/radio-seek.mp3"
+        preload="auto"
+        style={{ display: "none" }}
+        onPlay={() => console.log("[Transition] radio-seek sample: onPlay")}
+        onPause={() => console.log("[Transition] radio-seek sample: onPause")}
+        onEnded={() => console.log("[Transition] radio-seek sample: onEnded")}
+      />
       {import.meta.env.DEV && <ConsoleLogDisplay />}
       <div className="title-bar">
         <span>third block fm</span>
