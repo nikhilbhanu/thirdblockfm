@@ -21,7 +21,7 @@ const stations = [
 const AudioPlayer = () => {
   // Use a ref to store audio elements for each station
   const stationAudioRefs = useRef({});
-  const [isLoading, setIsLoading] = useState(true); // State for initial loading
+  const [isLoading, setIsLoading] = useState(false); // State for initial loading - set to false initially
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false); // State for overall buffering indication
   const [artist, setArtist] = useState('unknown artist');
@@ -197,9 +197,11 @@ const AudioPlayer = () => {
         stations.forEach(station => {
           if (station.id !== currentStationId) {
             const outgoingAudio = stationAudioRefs.current[station.id];
-            if (outgoingAudio && outgoingAudio.volume > 0) {
-              outgoingAudio.volume = Math.max(0, outgoingAudio.volume - (1 / VOLUME_STEPS));
-              allFaded = false;
+            if (outgoingAudio) {
+              if (outgoingAudio.volume > 0) {
+                outgoingAudio.volume = Math.max(0, outgoingAudio.volume - (1 / VOLUME_STEPS));
+                allFaded = false;
+              }
               if (outgoingAudio.volume === 0) {
                 outgoingAudio.pause();
                 console.log(`Paused outgoing station: ${station.name}`);
@@ -240,62 +242,6 @@ const AudioPlayer = () => {
       setIsPlaying(false);
     }
   }, [currentStationId, stations, VOLUME_STEPS, CROSSFADE_DURATION_MS]); // Rerun when currentStationId or config changes
-
-  // Effect to handle pre-buffering and setting up audio elements on mount
-  useEffect(() => {
-    console.log('Setting up audio elements and pre-buffering on mount.');
-    const stationReadiness = {}; // Use a local object to track readiness
-    let stationsReadyCount = 0;
-
-    stations.forEach(station => {
-      const audio = stationAudioRefs.current[station.id];
-      if (audio) {
-        // Audio element is already created in JSX with src and preload="auto"
-        // Add canplaythrough listener to track when each station is ready
-        const handleCanPlayThrough = () => {
-          console.log(`Station ${station.name} is ready to play.`);
-          if (!stationReadiness[station.id]) { // Prevent double counting if event fires multiple times
-            stationReadiness[station.id] = true;
-            stationsReadyCount++;
-            if (stationsReadyCount === stations.length) {
-              console.log('All stations are ready.');
-              setIsLoading(false); // All stations are ready, hide loading
-            }
-          }
-          // If this is the currently selected station, update isBuffering state
-          if (currentStationId === station.id) {
-            setIsBuffering(false);
-          }
-        };
-        audio.addEventListener('canplaythrough', handleCanPlayThrough);
-
-        // Set initial volume to 0
-        audio.volume = 0;
-
-        // Initial check for buffering state if a station is already selected on mount
-        if (currentStationId === station.id && !stationReadiness[station.id]) {
-          setIsBuffering(true);
-        }
-
-
-        // Clean up listener on unmount
-        // Store listeners to remove them correctly
-        audio._canplaythroughListener = handleCanPlayThrough;
-      }
-    });
-
-    // Cleanup function for this effect
-    return () => {
-      console.log('Cleaning up pre-buffering effect.');
-      stations.forEach(station => {
-        const audio = stationAudioRefs.current[station.id];
-        if (audio && audio._canplaythroughListener) {
-          audio.removeEventListener('canplaythrough', audio._canplaythroughListener);
-          delete audio._canplaythroughListener; // Clean up the stored listener
-        }
-      });
-    };
-  }, []); // Run only once on mount
 
   // Function to handle station selection
   const handleStationSelect = async (stationId) => {
@@ -367,7 +313,6 @@ const AudioPlayer = () => {
           key={station.id}
           ref={el => stationAudioRefs.current[station.id] = el}
           src={station.streamUrl}
-          preload="auto" // Preload audio on page load
           volume={0} // Start with volume 0
         />
       ))}
@@ -378,42 +323,34 @@ const AudioPlayer = () => {
         {/* Add window control icons (minimize, maximize, close) if desired */}
       </div>
 
-      {isLoading ? (
-        <div className="loading-message">
-          Loading<span className="loading-dots"><span>.</span><span>.</span><span>.</span></span>
-        </div>
-      ) : (
-        <>
-          {/* Info Area */}
-          <div className="info-area">
-            <p>artist: {artist}</p>
-            <p>track: {trackName}</p>
-          </div>
+      {/* Info Area */}
+      <div className="info-area">
+        <p>artist: {artist}</p>
+        <p>track: {trackName}</p>
+      </div>
 
-          {/* Controls Area - Now contains station buttons */}
-          <div className="controls-area">
-            {stations.map(station => (
-              <div
-                key={station.id}
-                className={`station-switch ${currentStationId === station.id ? 'active' : ''} ${loadingStations[station.id] ? 'loading-dots' : ''}`}
-                onClick={() => handleStationSelect(station.id)}
-                role="switch"
-                aria-checked={currentStationId === station.id}
-                aria-label={station.name} // For accessibility
-                tabIndex={isTransitioning ? -1 : 0} // Make it focusable unless transitioning
-                onKeyPress={(e) => { if (!isTransitioning && (e.key === 'Enter' || e.key === ' ')) handleStationSelect(station.id); }} // Keyboard interaction
-                style={{ pointerEvents: isTransitioning ? 'none' : 'auto' }} // Disable clicks during transition
-              >
-                <div className="switch-track">
-                  <div className="switch-handle"></div>
-                </div>
-                <span className="station-name-label">{station.name.toUpperCase()}</span> {/* Display station name */}
-              </div>
-            ))}
+      {/* Controls Area - Now contains station buttons */}
+      <div className="controls-area">
+        {stations.map(station => (
+          <div
+            key={station.id}
+            className={`station-switch ${currentStationId === station.id ? 'active' : ''} ${loadingStations[station.id] ? 'loading-dots' : ''}`}
+            onClick={() => handleStationSelect(station.id)}
+            role="switch"
+            aria-checked={currentStationId === station.id}
+            aria-label={station.name} // For accessibility
+            tabIndex={isTransitioning ? -1 : 0} // Make it focusable unless transitioning
+            onKeyPress={(e) => { if (!isTransitioning && (e.key === 'Enter' || e.key === ' ')) handleStationSelect(station.id); }} // Keyboard interaction
+            style={{ pointerEvents: isTransitioning ? 'none' : 'auto' }} // Disable clicks during transition
+          >
+            <div className="switch-track">
+              <div className="switch-handle"></div>
+            </div>
+            <span className="station-name-label">{station.name.toUpperCase()}</span> {/* Display station name */}
           </div>
-        </>
-      )}
-    </div>
+        ))}
+      </div>
+    </div >
   );
 };
 
