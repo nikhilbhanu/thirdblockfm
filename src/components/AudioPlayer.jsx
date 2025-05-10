@@ -21,6 +21,8 @@ const stations = [
 const AudioPlayer = () => {
   // Dynamic player refs, one per station
   const playerRefs = useRef({});
+  // Ref to track previous station for deferred stop
+  const prevStationIdRef = useRef(null);
   // Ensure a ref exists for each station
   stations.forEach(station => {
     if (!playerRefs.current[station.id]) {
@@ -28,27 +30,34 @@ const AudioPlayer = () => {
     }
   });
 
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedStationId, setSelectedStationId] = useState(null); // User's current selection
+  const [currentStationId, setCurrentStationId] = useState(null);   // Actually playing
+  const [playerState, setPlayerState] = useState("idle"); // "idle" | "loading" | "playing" | "stopping" | "error"
   const [artist, setArtist] = useState("unknown artist");
   const [trackName, setTrackName] = useState("unknown track");
-  const [pendingStationId, setPendingStationId] = useState(null);
-  const [currentStationId, setCurrentStationId] = useState(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [flashingStationId, setFlashingStationId] = useState(null);
   const [error, setError] = useState(null);
 
-  // Failsafe: always clear flashing after 3s max
+  // Failsafe: if loading takes too long, set error and reset state
   useEffect(() => {
-    if (flashingStationId) {
+    if (playerState === "loading" && selectedStationId) {
       const failsafe = setTimeout(() => {
-        setFlashingStationId(null);
-        setIsTransitioning(false);
-        // eslint-disable-next-line no-console
-        console.log("[AudioPlayer] Failsafe: forcibly clearing flashing for", flashingStationId);
+        setPlayerState("error");
+        setError("Loading timed out. Please try again.");
+        setSelectedStationId(null);
       }, 3000);
       return () => clearTimeout(failsafe);
     }
-  }, [flashingStationId]);
+  }, [playerState, selectedStationId]);
+
+  // Stop the old player when switching stations
+  useEffect(() => {
+    if (currentStationId && prevStationIdRef.current && prevStationIdRef.current !== currentStationId) {
+      if (playerRefs.current[prevStationIdRef.current]?.current) {
+        playerRefs.current[prevStationIdRef.current].current.stop();
+      }
+      prevStationIdRef.current = null;
+    }
+  }, [currentStationId]);
 
   // Helper: Update Media Session API
   const updateMediaSession = (artist, trackName, isPlaying) => {
@@ -82,26 +91,19 @@ const AudioPlayer = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle station change (pendingStationId triggers the switch)
+  // Handle station change (selectedStationId triggers the switch)
   useEffect(() => {
-    if (!pendingStationId) return;
+    if (!selectedStationId) return;
 
-    setFlashingStationId(null);
-    setTimeout(() => setFlashingStationId(pendingStationId), 0);
-    setIsTransitioning(true);
+    setPlayerState("loading");
     setError(null);
 
-    const selectedStation = stations.find((station) => station.id === pendingStationId);
+    const selectedStation = stations.find((station) => station.id === selectedStationId);
     if (!selectedStation) return;
 
-    // Stop the current player if any
-    if (currentStationId && playerRefs.current[currentStationId]?.current) {
-      playerRefs.current[currentStationId].current.stop();
-    }
-
     // If player doesn't exist, create it
-    if (!playerRefs.current[pendingStationId].current) {
-      playerRefs.current[pendingStationId].current = new IcecastMetadataPlayer(selectedStation.streamUrl, {
+    if (!playerRefs.current[selectedStationId].current) {
+      playerRefs.current[selectedStationId].current = new IcecastMetadataPlayer(selectedStation.streamUrl, {
         enableLogging: import.meta.env.DEV,
         metadataTypes: ["icy"],
         onMetadata: (metadata) => {
@@ -111,72 +113,69 @@ const AudioPlayer = () => {
             setArtist(artist?.trim() || "unknown artist");
             setTrackName(trackParts.join(" - ").trim() || "unknown track");
             setError(null);
-            updateMediaSession(artist?.trim() || "unknown artist", trackParts.join(" - ").trim() || "unknown track", isPlaying);
+            updateMediaSession(artist?.trim() || "unknown artist", trackParts.join(" - ").trim() || "unknown track", playerState === "playing");
           } else {
             setArtist("unknown artist");
             setTrackName("unknown track");
             setError("No metadata available");
-            updateMediaSession("unknown artist", "unknown track", isPlaying);
+            updateMediaSession("unknown artist", "unknown track", playerState === "playing");
           }
-          setIsTransitioning(false);
-          setFlashingStationId(null);
+          setPlayerState("playing");
+          setCurrentStationId(selectedStationId);
         },
         onPlay: () => {
-          setIsPlaying(true);
+          setPlayerState("playing");
+          setCurrentStationId(selectedStationId);
           setError(null);
           updateMediaSession(artist, trackName, true);
         },
         onStop: () => {
-          setIsPlaying(false);
+          setPlayerState("idle");
           updateMediaSession(artist, trackName, false);
         },
         onError: () => {
           setArtist("Error");
           setTrackName("stream error");
           setError("Stream error. Please try again.");
-          setIsTransitioning(false);
-          setFlashingStationId(null);
+          setPlayerState("error");
         },
       });
     }
 
     // Play the selected player
-    playerRefs.current[pendingStationId].current
+    playerRefs.current[selectedStationId].current
       .play()
       .then(() => {
-        setCurrentStationId(pendingStationId);
-        setPendingStationId(null);
+        setPlayerState("playing");
+        setCurrentStationId(selectedStationId);
         setError(null);
       })
       .catch(() => {
-        setIsTransitioning(false);
-        setPendingStationId(null);
-        setFlashingStationId(null);
+        setPlayerState("error");
         setError("Playback failed. Tap a station to retry.");
       });
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingStationId]);
+  }, [selectedStationId]);
 
   // Handle station selection (radio group logic)
   const handleStationSelect = (stationId) => {
-    if (currentStationId === stationId && isPlaying) {
+    if (currentStationId === stationId && playerState === "playing") {
       // Clicking the active station stops playback and deselects all
       if (playerRefs.current[stationId]?.current) {
         playerRefs.current[stationId].current.stop();
         playerRefs.current[stationId].current = null;
       }
-      setIsPlaying(false);
+      setPlayerState("idle");
       setCurrentStationId(null);
-      setPendingStationId(null);
-      setIsTransitioning(false);
+      setSelectedStationId(null);
       setArtist("unknown artist");
       setTrackName("unknown track");
       updateMediaSession("unknown artist", "unknown track", false);
-      setFlashingStationId(null);
     } else {
       // Clicking an inactive station starts playback for that station
-      setPendingStationId(stationId);
+      prevStationIdRef.current = currentStationId;
+      setSelectedStationId(stationId);
     }
   };
 
@@ -200,21 +199,22 @@ const AudioPlayer = () => {
       )}
       <div className="controls-area" role="radiogroup" aria-label="Station Selector">
         {stations.map((station) => {
-          const isActive = currentStationId === station.id && isPlaying && !isTransitioning;
-          const isFlashing = flashingStationId === station.id;
+          const isActive = selectedStationId === station.id;
+          const isFlashing = playerState === "loading" && selectedStationId === station.id;
+          const isPlaying = playerState === "playing" && currentStationId === station.id;
           return (
             <div
               key={station.id}
-              className={`station-switch${isActive ? " active" : ""}${isFlashing ? " flashing" : ""}`}
+              className={`station-switch${isActive ? " active" : ""}${isFlashing ? " flashing" : ""}${isPlaying ? " playing" : ""}`}
               onClick={() => handleStationSelect(station.id)}
               role="radio"
               aria-checked={isActive}
               aria-label={station.name}
-              tabIndex={isTransitioning ? -1 : 0}
+              tabIndex={playerState === "loading" ? -1 : 0}
               onKeyPress={(e) => {
-                if (!isTransitioning && (e.key === "Enter" || e.key === " ")) handleStationSelect(station.id);
+                if (playerState !== "loading" && (e.key === "Enter" || e.key === " ")) handleStationSelect(station.id);
               }}
-              style={{ pointerEvents: isTransitioning ? "none" : "auto" }}
+              style={{ pointerEvents: playerState === "loading" ? "none" : "auto" }}
             >
               <div className="switch-track">
                 <div
