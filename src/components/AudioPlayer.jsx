@@ -31,12 +31,7 @@ const AudioPlayer = () => {
     if (!audio) return;
 
     // Log browser support for mp3 at mount
-    const canPlay = audio.canPlayType ? audio.canPlayType("audio/mpeg") : "";
-    if (!canPlay) {
-      console.warn("[RadioSeek] Browser does not support mp3 playback (audio/mpeg). canPlayType returned:", canPlay);
-    } else {
-      console.log("[RadioSeek] Browser reports mp3 support (audio/mpeg):", canPlay);
-    }
+    // (Removed all logs)
 
     const onError = (e) => {
       // Print detailed diagnostics
@@ -51,15 +46,7 @@ const AudioPlayer = () => {
           default: errMsg = "Unknown error code";
         }
       }
-      console.error("[RadioSeek] Audio error event", {
-        event: e,
-        src: audio.src,
-        readyState: audio.readyState,
-        networkState: audio.networkState,
-        error: errObj,
-        errorMessage: errMsg,
-        canPlayType: canPlay,
-      });
+      // (Removed all logs)
     };
     audio.addEventListener("error", onError);
     return () => {
@@ -91,7 +78,7 @@ const AudioPlayer = () => {
         setPlayerState("error");
         setError("Loading timed out. Please try again.");
         setSelectedStationId(null);
-        console.log("[Transition] Loading timed out, resetting state");
+        // (Removed all logs)
       }, 3000);
       return () => clearTimeout(failsafe);
     }
@@ -135,17 +122,12 @@ const AudioPlayer = () => {
 
     setPlayerState("loading");
     setError(null);
-    console.log("[Transition] Station selection started, entering loading state for", selectedStationId);
+    // (Removed all logs)
 
     // Delay starting the new station to allow the radio-seek sample to play
     const delayMs = 500; // Minimum time to play the sample (adjust as needed)
     const timeout = setTimeout(() => {
-      // Failsafe: stop radio-seek sample before starting new station
-      if (radioSeekRef.current) {
-        radioSeekRef.current.pause();
-        radioSeekRef.current.currentTime = 0;
-        console.log("[Transition] Stopped radio-seek sample before starting new station in setTimeout");
-      }
+      // (No longer stop radio-seek sample here! Overlap with new station start)
 
       const selectedStation = stations.find((station) => station.id === selectedStationId);
       if (!selectedStation) return;
@@ -171,26 +153,47 @@ const AudioPlayer = () => {
             }
             setPlayerState("playing");
             setCurrentStationId(selectedStationId);
-            console.log("[Transition] Metadata received, switching to playing state for", selectedStationId);
+            // (Removed all logs)
+
+            // Stop radio-seek sample as soon as new station is ready
+            if (radioSeekRef.current) {
+              radioSeekRef.current.pause();
+              radioSeekRef.current.currentTime = 0;
+              // (Removed all logs)
+            }
           },
           onPlay: () => {
             setPlayerState("playing");
             setCurrentStationId(selectedStationId);
             setError(null);
             updateMediaSession(artist, trackName, true);
-            console.log("[Transition] onPlay: Now playing", selectedStationId);
+            // (Removed all logs)
+
+            // Stop radio-seek sample as soon as new station is playing
+            if (radioSeekRef.current) {
+              radioSeekRef.current.pause();
+              radioSeekRef.current.currentTime = 0;
+              // (Removed all logs)
+            }
           },
           onStop: () => {
             setPlayerState("idle");
             updateMediaSession(artist, trackName, false);
-            console.log("[Transition] onStop: Station stopped");
+            // (Removed all logs)
           },
           onError: () => {
             setArtist("Error");
             setTrackName("stream error");
             setError("Stream error. Please try again.");
             setPlayerState("error");
-            console.error("[Transition] onError: Stream error for", selectedStationId);
+            // (Removed all logs)
+
+            // Stop radio-seek sample on error
+            if (radioSeekRef.current) {
+              radioSeekRef.current.pause();
+              radioSeekRef.current.currentTime = 0;
+              // (Removed all logs)
+            }
           },
         });
       }
@@ -202,12 +205,19 @@ const AudioPlayer = () => {
           setPlayerState("playing");
           setCurrentStationId(selectedStationId);
           setError(null);
-          console.log("[Transition] Play promise resolved for", selectedStationId);
+          // (Removed all logs)
         })
         .catch((err) => {
           setPlayerState("error");
           setError("Playback failed. Tap a station to retry.");
-          console.error("[Transition] Play promise rejected for", selectedStationId, err);
+          // (Removed all logs)
+
+          // Stop radio-seek sample on play error
+          if (radioSeekRef.current) {
+            radioSeekRef.current.pause();
+            radioSeekRef.current.currentTime = 0;
+            // (Removed all logs)
+          }
         });
     }, delayMs);
 
@@ -221,7 +231,7 @@ const AudioPlayer = () => {
     if (radioSeekRef.current) {
       radioSeekRef.current.pause();
       radioSeekRef.current.currentTime = 0;
-      console.log("[Transition] Stopped radio-seek sample at start of handleStationSelect");
+      // (Removed all logs)
     }
 
     if (currentStationId === stationId && playerState === "playing") {
@@ -229,7 +239,7 @@ const AudioPlayer = () => {
       if (playerRefs.current[stationId]?.current) {
         playerRefs.current[stationId].current.stop();
         playerRefs.current[stationId].current = null;
-        console.log("[Transition] Stopped and cleared current station:", stationId);
+        // (Removed all logs)
       }
       setPlayerState("idle");
       setCurrentStationId(null);
@@ -244,7 +254,7 @@ const AudioPlayer = () => {
       if (currentStationId && playerRefs.current[currentStationId]?.current) {
         playerRefs.current[currentStationId].current.stop();
         playerRefs.current[currentStationId].current = null;
-        console.log("[Transition] Immediately stopped current station before switching to", stationId);
+        // (Removed all logs)
       }
       prevStationIdRef.current = currentStationId;
 
@@ -258,9 +268,9 @@ const AudioPlayer = () => {
             const seek = Math.random() * maxSeek;
             audio.currentTime = seek;
             audio.play().then(() => {
-              console.log(`[Transition] Playing radio-seek sample at ${seek.toFixed(2)}s (max ${maxSeek.toFixed(2)}s)`);
+              // (Removed all logs)
             }).catch((err) => {
-              console.error("[Transition] Failed to play radio-seek sample", err);
+              // (Removed all logs)
             });
           };
           if (audio.readyState >= 1) {
@@ -270,14 +280,14 @@ const AudioPlayer = () => {
             audio.load();
           }
         } catch (err) {
-          console.error("[Transition] Error during flashing start (radio-seek)", err);
+          // (Removed all logs)
         }
       } else {
-        console.warn("[Transition] radioSeekRef is null on flashing start");
+        // (Removed all logs)
       }
 
       setSelectedStationId(stationId);
-      console.log("[Transition] Selected new station:", stationId, "Previous:", currentStationId);
+      // (Removed all logs)
     }
   };
 
@@ -298,7 +308,7 @@ const AudioPlayer = () => {
       if (audio) {
         audio.pause();
         audio.currentTime = 0;
-        console.log("[Transition] Stopped radio-seek sample on transition to", curr);
+        // (Removed all logs)
       }
     }
 
@@ -310,12 +320,10 @@ const AudioPlayer = () => {
       {/* Hidden radio-seek sample audio element for transition */}
       <audio
         ref={radioSeekRef}
-        src="/thirdblockfm/radio-seek.mp3"
+        src="/thirdblockfm/static.mp3"
         preload="auto"
+        loop
         style={{ display: "none" }}
-        onPlay={() => console.log("[Transition] radio-seek sample: onPlay")}
-        onPause={() => console.log("[Transition] radio-seek sample: onPause")}
-        onEnded={() => console.log("[Transition] radio-seek sample: onEnded")}
       />
       {import.meta.env.DEV && <ConsoleLogDisplay />}
       <div className="title-bar">
