@@ -5,4 +5,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: '/thirdblockfm/', // Set base for GitHub Pages deployment
+  server: {
+    host: true // This makes the server accessible on your local network
+  }
 });

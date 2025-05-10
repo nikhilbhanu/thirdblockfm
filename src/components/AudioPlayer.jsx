@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import './AudioPlayer.css';
+import ConsoleLogDisplay from './ConsoleLogDisplay'; // Import ConsoleLogDisplay
 
 // Define the available stations
 const stations = [
@@ -102,7 +103,7 @@ const AudioPlayer = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('fetchMetadata successful. Data:', data);
+      // console.log('fetchMetadata successful. Data:', data);
 
       const selectedStation = stations.find(station => station.id === currentStationId);
 
@@ -359,6 +360,7 @@ const AudioPlayer = () => {
 
   return (
     <div className="audio-player-container">
+      {import.meta.env.DEV && <ConsoleLogDisplay />} {/* Add the log display component conditionally */}
       {/* Audio elements - hidden but controlled */}
       {stations.map(station => (
         <audio
